@@ -1,0 +1,362 @@
+<?php
+// Khởi tạo chung: cấu hình, CSDL, phiên đăng nhập, CSRF, giao diện.
+declare(strict_types=1);
+mb_internal_encoding('UTF-8');
+date_default_timezone_set('Asia/Ho_Chi_Minh');
+
+const LETTERS = 'ABCDEFGHIJ';
+const REJECT_REASONS = [
+    'no_session' => 'Lớp chưa bắt đầu buổi', 'unknown_seat' => 'ID không có trong lớp', 'seat_taken' => 'ID đã có máy khác đăng nhập',
+    'mac_bound' => 'Máy này đã đăng nhập ID khác', 'not_logged_in' => 'Máy chưa điểm danh', 'id_mismatch' => 'ID trong gói khác ID đã đăng nhập',
+    'q_not_open' => 'Câu chưa mở', 'q_closed' => 'Câu đã đóng', 'late' => 'Hết giờ', 'bad_option' => 'Chữ vượt số lựa chọn',
+    'no_change' => 'Không cho đổi đáp án', 'malformed' => 'Gói hỏng',
+    'mapping_mismatch' => 'Remote không đúng học sinh đã ghép',
+    'wrong_link' => 'Sai kiểu kết nối (lớp đang chọn kiểu khác)',
+];
+const CONN_MODES = ['ble' => 'Bluetooth', 'wifi' => 'Wi-Fi'];
+
+function cfg(): array {
+    static $c = null;
+    if ($c === null) {
+        $path = getenv('ARS_CONFIG') ?: __DIR__ . '/../../config.ini';
+        $c = @parse_ini_file($path, true);
+        if (!$c) { http_response_code(500); exit('Không đọc được config.ini (' . htmlspecialchars($path) . ')'); }
+    }
+    return $c;
+}
+
+function db(): PDO {
+    static $pdo = null;
+    if ($pdo === null) {
+        $d = cfg()['db'];
+        $pdo = new PDO("mysql:host={$d['host']};port=" . ($d['port'] ?? 3306) . ";dbname={$d['name']};charset=utf8mb4",
+            $d['user'], $d['password'], [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ]);
+    }
+    return $pdo;
+}
+
+function q(string $sql, array $args = []): PDOStatement {
+    $st = db()->prepare($sql);
+    $st->execute($args);
+    return $st;
+}
+function q1(string $sql, array $args = []): ?array { $r = q($sql, $args)->fetch(); return $r === false ? null : $r; }
+function qall(string $sql, array $args = []): array { return q($sql, $args)->fetchAll(); }
+function qv(string $sql, array $args = []) { $r = q($sql, $args)->fetchColumn(); return $r === false ? null : $r; }
+
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
+// ---------------------------------------------------------------- phiên & quyền
+/** Yêu cầu đi qua proxy/đường hầm (Tailscale Funnel, Cloudflare Tunnel, reverse proxy)? */
+function via_proxy(): bool {
+    foreach (['HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED_HOST', 'HTTP_X_REAL_IP', 'HTTP_FORWARDED', 'HTTP_CF_CONNECTING_IP',
+              'HTTP_TAILSCALE_USER_LOGIN', 'HTTP_TAILSCALE_FUNNEL_REQUEST'] as $h) if (!empty($_SERVER[$h])) return true;
+    return false;
+}
+function is_https(): bool {
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+}
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => is_https()]);
+    session_start();
+}
+
+function me(): ?array { return $_SESSION['teacher'] ?? null; }
+
+/** Đăng nhập + kiểm tra tài khoản còn hoạt động (quản trị có thể khoá bất cứ lúc nào). */
+function require_login(): array {
+    if (!me()) { header('Location: index.php'); exit; }
+    static $checked = false;
+    if (!$checked) {
+        $checked = true;
+        $row = q1('SELECT active, is_admin, full_name, school_id, school_role FROM teachers WHERE id=?', [me()['id']]);
+        if (!$row || !(int)$row['active']) {
+            $_SESSION = []; session_destroy();
+            header('Location: index.php?locked=1'); exit;
+        }
+        $_SESSION['teacher']['is_admin'] = (int)$row['is_admin'] === 1;
+        $_SESSION['teacher']['full_name'] = $row['full_name'];
+        $_SESSION['teacher']['school_admin'] = $row['school_role'] === 'school_admin' && $row['school_id'] !== null;
+    }
+    return me();
+}
+function is_admin(): bool { return !empty(me()['is_admin']); }
+/** Admin trường (Ban giám hiệu / chủ trung tâm): quản lý giáo viên và xem báo cáo các lớp trong trường mình. */
+function is_school_admin(): bool { return !empty(me()['school_admin']); }
+function require_admin(): array {
+    $t = require_login();
+    if (!is_admin()) { http_response_code(403); page_head('Không có quyền'); echo '<div class="card"><h1>Chỉ quản trị viên</h1><p>Trang này dành cho giáo viên quản trị server.</p></div>'; page_foot(); exit; }
+    return $t;
+}
+
+function csrf_token(): string {
+    if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
+    return $_SESSION['csrf'];
+}
+function csrf_field(): string { return '<input type="hidden" name="csrf" value="' . h(csrf_token()) . '">'; }
+function check_csrf(): void {
+    // ARS_TOKEN_API: endpoint xác thực bằng mã trong header, không dùng cookie phiên → không cần CSRF
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !defined('ARS_TOKEN_API') && !hash_equals(csrf_token(), $_POST['csrf'] ?? '')) {
+        http_response_code(400); exit('Phiên làm việc hết hạn, tải lại trang rồi thử lại.');
+    }
+}
+check_csrf();
+
+function flash(string $msg, string $kind = 'ok'): void { $_SESSION['flash'][] = [$kind, $msg]; }
+/** Hiệu ứng chạy một lần ở trang kế tiếp (assets/fx.js): celebrate | correct | wrong | success. */
+function fx_once(string $name): void { $_SESSION['fx'] = $name; }
+function fx_attr(): string { $f = $_SESSION['fx'] ?? ''; unset($_SESSION['fx']); return $f ? ' data-fx="' . h($f) . '"' : ''; }
+function redirect(string $url): void { header('Location: ' . $url); exit; }
+
+// Lớp / bộ đề / buổi phải thuộc giáo viên đang đăng nhập
+function own_class(int $id): array {
+    $c = q1('SELECT * FROM classes WHERE id=? AND teacher_id=?', [$id, me()['id']]);
+    if (!$c) { http_response_code(404); exit('Không tìm thấy lớp.'); }
+    return $c;
+}
+function own_set(int $id): array {
+    $s = q1('SELECT * FROM question_sets WHERE id=? AND teacher_id=?', [$id, me()['id']]);
+    if (!$s) { http_response_code(404); exit('Không tìm thấy bộ câu hỏi.'); }
+    return $s;
+}
+function own_session(int $id): array {
+    $s = q1('SELECT s.*, c.name AS class_name, c.room_id, c.conn_mode, qs.title AS set_title FROM sessions s '
+          . 'JOIN classes c ON c.id=s.class_id JOIN question_sets qs ON qs.id=s.set_id '
+          . 'WHERE s.id=? AND c.teacher_id=?', [$id, me()['id']]);
+    if (!$s) { http_response_code(404); exit('Không tìm thấy buổi học.'); }
+    return $s;
+}
+
+// Web chỉ ghi DB; tăng state_rev để ingest.py phát lại STATE cho gateway
+function bump_state(int $session_id): void { q('UPDATE sessions SET state_rev=state_rev+1 WHERE id=?', [$session_id]); }
+
+function options_of(array $q): array {
+    $o = [];
+    for ($i = 0; $i < (int)$q['n_options']; $i++) {
+        $L = LETTERS[$i];
+        $o[$L] = $q['opt_' . strtolower($L)] ?? '';
+    }
+    return $o;
+}
+
+// ---------------------------------------------------------------- cài đặt, tệp tải lên, JSON
+function setting(string $k, ?string $default = null): ?string {
+    static $all = null;
+    if ($all === null) {
+        try { $all = array_column(qall('SELECT k, v FROM settings'), 'v', 'k'); } catch (Throwable $e) { $all = []; }
+    }
+    return array_key_exists($k, $all) && $all[$k] !== null && $all[$k] !== '' ? $all[$k] : $default;
+}
+function setting_set(string $k, ?string $v): void {
+    q('INSERT INTO settings (k, v) VALUES (?,?) ON DUPLICATE KEY UPDATE v=VALUES(v)', [$k, $v]);
+}
+
+/** Thư mục lưu file bài giảng (ngoài thư mục web; installer tạo /var/lib/ars/uploads). */
+function uploads_dir(): string {
+    $d = cfg()['storage']['uploads'] ?? (__DIR__ . '/../../data/uploads');
+    if (!is_dir($d)) @mkdir($d, 0770, true);
+    return rtrim($d, '/\\');
+}
+
+function json_out($data, int $code = 200): void {
+    http_response_code($code);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+function require_login_json(): array {
+    if (!me()) json_out(['error' => 'Phiên đăng nhập đã hết hạn. Vui lòng tải lại trang.'], 401);
+    return require_login();
+}
+
+function human_size(int $b): string {
+    foreach (['B', 'KB', 'MB', 'GB'] as $u) { if ($b < 1024 || $u === 'GB') return ($u === 'B' ? $b : number_format($b, 1, ',', '.')) . ' ' . $u; $b /= 1024; }
+    return '';
+}
+
+const DIFFICULTY = ['de' => 'Dễ', 'tb' => 'Trung bình', 'kho' => 'Khó'];
+const PURPOSE = ['test' => 'Kiểm tra', 'practice' => 'Ôn tập'];
+
+/** Mỗi lớp có sẵn 10 buổi học (tạo khi cần). */
+function ensure_lessons(int $class_id, int $n = 10): void {
+    $have = array_map('intval', array_column(qall('SELECT no FROM lessons WHERE class_id=?', [$class_id]), 'no'));
+    for ($i = 1; $i <= $n; $i++) if (!in_array($i, $have, true)) q('INSERT IGNORE INTO lessons (class_id, no) VALUES (?,?)', [$class_id, $i]);
+}
+function own_lesson(int $id): array {
+    $l = q1('SELECT l.*, c.name AS class_name, c.id AS class_id FROM lessons l JOIN classes c ON c.id=l.class_id WHERE l.id=? AND c.teacher_id=?', [$id, me()['id']]);
+    if (!$l) { http_response_code(404); exit('Không tìm thấy buổi học.'); }
+    return $l;
+}
+/** Tạo mã khôi phục mật khẩu giáo viên mới (dạng ABCD-EFGH-JKLM), lưu bản băm, trả về mã để hiện một lần. */
+function new_recovery_code(int $teacher_id): string {
+    $abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; $c = '';
+    for ($i = 0; $i < 12; $i++) $c .= ($i && $i % 4 === 0 ? '-' : '') . $abc[random_int(0, strlen($abc) - 1)];
+    q('UPDATE teachers SET recovery_hash=? WHERE id=?', [password_hash($c, PASSWORD_DEFAULT), $teacher_id]);
+    return $c;
+}
+/** Người dùng ngồi ngay tại máy chủ (mở http://localhost). Yêu cầu từ Internet qua đường hầm
+ *  cũng đến từ 127.0.0.1 nên phải loại các yêu cầu có header của proxy và Host không phải localhost. */
+function is_local_request(): bool {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $loop = $ip === '::1' || str_starts_with($ip, '127.');
+    $host = strtolower(preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
+    return $loop && !via_proxy() && in_array($host, ['localhost', '127.0.0.1', '[::1]'], true);
+}
+
+// ---------------------------------------------------------------- đường dẫn cố định
+/** IP LAN của máy chủ (địa chỉ đầu tiên của hostname -I). */
+function lan_ip(): ?string {
+    static $ip = false;
+    if ($ip === false) {
+        $ip = null;
+        $out = function_exists('shell_exec') ? @shell_exec('hostname -I 2>/dev/null') : null;
+        foreach (preg_split('/\s+/', trim((string)$out)) as $a) {
+            if (filter_var($a, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && !str_starts_with($a, '127.') && !str_starts_with($a, '100.') && !str_starts_with($a, '172.17.')) { $ip = $a; break; }
+        }
+        if (!$ip && !empty($_SERVER['SERVER_ADDR']) && !str_starts_with($_SERVER['SERVER_ADDR'], '127.')) $ip = $_SERVER['SERVER_ADDR'];
+    }
+    return $ip;
+}
+/** Địa chỉ gốc của yêu cầu hiện tại, ví dụ https://ars-server.tail1234.ts.net */
+function current_base(): string {
+    $host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    return (is_https() ? 'https' : 'http') . '://' . explode(',', $host)[0];
+}
+/** Các địa chỉ gốc dùng được: công khai (Internet), tên cố định trong LAN, IP LAN. */
+function access_bases(): array {
+    $b = [];
+    if ($p = setting('public_url')) $b['public'] = rtrim($p, '/');
+    $b['lan_name'] = 'http://' . (setting('lan_name') ?: 'ars.local');
+    if ($ip = lan_ip()) $b['lan_ip'] = 'http://' . $ip;
+    return $b;
+}
+/** Địa chỉ gốc nên đưa cho học sinh / giáo viên khác: ưu tiên link công khai. */
+function share_base(): string {
+    $b = access_bases();
+    return $b['public'] ?? $b['lan_ip'] ?? $b['lan_name'];
+}
+function link_gv(?string $base = null): string { return ($base ?? share_base()) . '/gv'; }
+function link_hs(?string $base = null): string { return ($base ?? share_base()) . '/hs'; }
+/** Ô hiển thị một đường dẫn + nút chép + mã QR (vẽ bằng assets/qr.js). */
+function link_box(string $url, string $label = '', bool $qr = true): string {
+    return '<div class="linkbox">' . ($label ? '<span class="lb-label">' . h($label) . '</span>' : '')
+         . '<code class="lb-url">' . h($url) . '</code>'
+         . '<button type="button" class="lb-copy" data-copy="' . h($url) . '">Chép</button>'
+         . ($qr ? '<button type="button" class="lb-qr" data-qr="' . h($url) . '">QR</button>' : '') . '</div>';
+}
+
+/** Mã lớp (room) đã dùng cho lớp khác (của bất kỳ giáo viên nào)? Trả về tên lớp + giáo viên. */
+function room_taken(int $room, int $except_class = 0): ?array {
+    return q1('SELECT c.name, t.full_name AS teacher FROM classes c JOIN teachers t ON t.id=c.teacher_id WHERE c.room_id=? AND c.id<>? LIMIT 1', [$room, $except_class]);
+}
+function next_free_room(): int {
+    $used = array_map('intval', array_column(qall('SELECT DISTINCT room_id FROM classes'), 'room_id'));
+    for ($r = 1; $r <= 255; $r++) if (!in_array($r, $used, true)) return $r;
+    return 255;
+}
+/** Hai thẻ chọn kiểu kết nối clicker (dùng trong form). */
+function conn_mode_picker(string $cur): string {
+    $o = '<div class="small muted" style="margin-bottom:-4px">Kết nối clicker</div><div class="modes">';
+    $d = ['ble' => ['🔵', 'Bluetooth', 'Clicker nRF52840 gửi qua gateway USB (cắm máy chủ hoặc máy GV).'],
+          'wifi' => ['📶', 'Wi-Fi', 'Clicker ESP32 gửi thẳng lên máy chủ qua Wi-Fi, không cần gateway.']];
+    foreach ($d as $k => [$ico, $name, $desc]) {
+        $o .= '<label class="mode"><input type="radio" name="conn_mode" value="' . $k . '"' . ($cur === $k ? ' checked' : '') . '>'
+            . '<b><span class="ico">' . $ico . '</span>' . $name . '</b><span class="small muted">' . $desc . '</span></label>';
+    }
+    return $o . '</div>';
+}
+
+// ---------------------------------------------------------------- MQTT cho clicker Wi-Fi và gateway qua trình duyệt
+function mqtt_public(): array {
+    $m = cfg()['mqtt_public'] ?? [];
+    return ['user' => $m['user'] ?? 'clicker', 'password' => $m['password'] ?? '', 'lan_port' => (int)($m['lan_port'] ?? 1884),
+            'ws_path' => $m['ws_path'] ?? '/mqtt'];
+}
+/** Mã tham gia lớp 6 ký tự (không có 0/O/1/I để đọc không nhầm); tạo khi chưa có hoặc khi $renew. */
+function class_join_code(int $class_id, bool $renew = false): string {
+    $c = (string)qv('SELECT join_code FROM classes WHERE id=?', [$class_id]);
+    if ($c !== '' && !$renew) return $c;
+    $abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for ($try = 0; $try < 20; $try++) {
+        $c = ''; for ($i = 0; $i < 6; $i++) $c .= $abc[random_int(0, strlen($abc) - 1)];
+        if (!q1('SELECT 1 FROM classes WHERE join_code=?', [$c])) break;
+    }
+    q('UPDATE classes SET join_code=? WHERE id=?', [$c, $class_id]);
+    return $c;
+}
+function lesson_label(array $l): string { return 'Buổi ' . (int)$l['no'] . ($l['title'] !== '' ? ' · ' . $l['title'] : ''); }
+
+// ---------------------------------------------------------------- giao diện
+const NAV = [
+    'dashboard.php' => ['Tổng quan', ['dashboard.php']],
+    'classes.php'   => ['Lớp học', ['classes.php', 'class.php']],
+    'lessons.php'   => ['Buổi học', ['lessons.php', 'lesson.php']],
+    'compose.php'   => ['Câu hỏi', ['compose.php', 'sets.php', 'set.php']],
+    'sessions.php'  => ['Lịch sử', ['sessions.php', 'session.php', 'results.php']],
+    'homework.php' => ['Bài tập', ['homework.php','homework_grade.php']],
+    'library.php' => ['Kho đề', ['library.php','variants.php']],
+    'analytics.php' => ['Báo cáo', ['analytics.php']],
+    'rewards.php' => ['Thi đua', ['rewards.php']],
+    'family.php' => ['Phụ huynh', ['family.php']],
+    'devices.php'   => ['Thiết bị', ['devices.php']],
+    'sync.php'      => ['Cloud', ['sync.php', 'notify.php']],
+];
+function asset_base(): string {return str_contains($_SERVER['SCRIPT_NAME']??'', '/parent/')?'../assets/':'assets/';}
+function math_assets(): string {$a=asset_base();return '<link rel="stylesheet" href="'.$a.'vendor/katex/katex.min.css"><script defer src="'.$a.'vendor/katex/katex.min.js"></script><script defer src="'.$a.'vendor/katex/contrib/auto-render.min.js"></script><script defer src="'.$a.'math.js"></script><script defer src="'.$a.'fx.js"></script>';}
+function page_head(string $title, string $active = '', bool $bare = false): void {
+    $t = me();
+    $page = $active ?: basename($_SERVER['SCRIPT_NAME'] ?? '');
+    echo '<!doctype html><html lang="vi"><head><meta charset="utf-8">'
+       . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+       . '<meta name="csrf" content="' . h(csrf_token()) . '">'
+       . '<title>' . h($title) . ' — ARS</title><link rel="stylesheet" href="'.asset_base().'style.css">'.math_assets().'</head>'
+       . '<body class="' . ($bare ? 'bare' : '').(str_contains($_SERVER['SCRIPT_NAME']??'', '/parent/')?' parent-portal':'') . '"' . fx_attr() . '>';
+    if (!$bare && $t) {
+        echo '<header class="top"><a class="brand" href="dashboard.php"><span class="logo">A</span>ARS<small>' . h(setting('org_name', 'Lớp học tương tác')) . '</small></a><nav>';
+        $nav = NAV;
+        if (!empty($t['school_admin'])) $nav['school.php'] = ['Trường của tôi', ['school.php', 'cohort.php']];
+        if (!empty($t['is_admin'])) { $nav['teachers.php'] = ['Giáo viên', ['teachers.php']]; $nav['schools.php']=['Trường',['schools.php']]; }
+        foreach ($nav as $href => [$label, $pages]) {
+            echo '<a href="' . $href . '"' . (in_array($page, $pages, true) ? ' class="on"' : '') . '>' . $label . '</a>';
+        }
+        echo '</nav><span class="who"><a href="settings.php" class="' . ($page === 'settings.php' ? 'on' : '') . '" title="Cài đặt">⚙ Cài đặt</a>'
+           . '<span class="avatar" title="' . h($t['full_name']) . '">' . h(mb_strtoupper(mb_substr(trim(strrchr(' ' . $t['full_name'], ' ')), 0, 1))) . '</span>'
+           . '<a href="logout.php">Đăng xuất</a></span></header>';
+    }
+    echo '<main>';
+    foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h($m) . '</div>';
+    unset($_SESSION['flash']);
+}
+
+function page_foot(string $script = ''): void {
+    echo '</main>';
+    echo '<script src="'.asset_base().'vendor/qrcode.js"></script><script src="'.asset_base().'qr.js"></script>';
+    if ($script) echo '<script src="assets/' . h($script) . '"></script>';
+    echo '</body></html>';
+}
+
+// Biểu đồ cột ngang bằng SVG (không cần thư viện ngoài, chạy được khi không có Internet)
+function bar_svg(array $counts, ?string $correct = null, int $width = 520): string {
+    $n = count($counts);
+    if ($n === 0) return '';
+    $max = max(1, max($counts));
+    $total = max(1, array_sum($counts));
+    $rowh = 30; $labw = 28; $barw = $width - $labw - 90;
+    $svg = '<svg class="bars" viewBox="0 0 ' . $width . ' ' . ($n * $rowh) . '" role="img">';
+    $i = 0;
+    foreach ($counts as $L => $v) {
+        $y = $i * $rowh;
+        $w = (int)round($barw * $v / $max);
+        $cls = ($correct !== null && $L === $correct) ? 'bar ok' : 'bar';
+        $svg .= '<text x="0" y="' . ($y + 20) . '" class="lab">' . h($L) . '</text>'
+              . '<rect x="' . $labw . '" y="' . ($y + 5) . '" width="' . max($w, 1) . '" height="' . ($rowh - 10) . '" rx="3" class="' . $cls . '"/>'
+              . '<text x="' . ($labw + $w + 6) . '" y="' . ($y + 20) . '" class="val">' . $v . ' (' . round($v * 100 / $total) . '%)</text>';
+        $i++;
+    }
+    return $svg . '</svg>';
+}

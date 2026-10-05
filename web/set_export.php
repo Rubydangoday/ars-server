@@ -1,0 +1,3 @@
+<?php
+require __DIR__.'/lib/bootstrap.php';require __DIR__.'/lib/sheet.php';require_login();$s=own_set((int)($_GET['id']??0));
+$rows=[['STT','Nội dung','Số lựa chọn','A','B','C','D','E','F','G','H','I','J','Đáp án','Thời gian (s)','Chủ đề','Giải thích']];foreach(qall('SELECT * FROM questions WHERE set_id=? ORDER BY position',[$s['id']]) as $r){$row=[$r['position'],$r['content'],$r['n_options']];foreach(str_split(LETTERS) as $k)$row[]=$r['opt_'.strtolower($k)]??'';$rows[]=array_merge($row,[$r['correct']??'',$r['time_limit']??'',$r['topic']??'',$r['explanation']??'']);}send_xlsx(['Cau hoi'=>$rows],'ARS_de_'.$s['id'].'.xlsx');

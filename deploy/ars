@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Lệnh tiện ích cho server ARS (cài vào /usr/local/bin/ars)
+DST=/opt/ars-server
+ini() { sudo awk -v s="[$1]" -v k="$2" '$0==s{f=1;next} /^\[/{f=0} f && $1==k {sub(/^[^=]*= */,""); print; exit}' $DST/config.ini 2>/dev/null; }
+case "${1:-}" in
+  status)
+    for s in apache2 mariadb mosquitto ars-ingest ars-bridge ars-mdns; do
+      printf '%-12s %s\n' "$s" "$(systemctl is-active $s 2>/dev/null || echo '?')"
+    done
+    ;;
+  logs)   journalctl -u ars-ingest -u ars-bridge -f -n 50 ;;
+  restart) sudo systemctl restart ars-ingest ars-bridge && echo "đã khởi động lại ingest + bridge" ;;
+  sim)    # chạy thử không cần phần cứng: ars sim [số clicker] [room] [ble|wifi]
+    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/tools/sim_clickers.py --room "${3:-1}" -n "${2:-30}" --via "${4:-ble}" --duration 300 ;;
+  links)  # in các link cố định cho giáo viên / học sinh
+    lan=$(ini lan name); lan=${lan:-ars.local}; ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    pub=$(sudo mysql -N ars -e "SELECT v FROM settings WHERE k='public_url'" 2>/dev/null)
+    echo "Trong mạng nội bộ (tên cố định): http://$lan/gv   ·   http://$lan/hs"
+    echo "Trong mạng nội bộ (IP):          http://$ip/gv   ·   http://$ip/hs"
+    [ -n "$pub" ] && echo "Qua Internet (mọi nơi):          $pub/gv   ·   $pub/hs" || echo "Qua Internet: chưa bật — sudo ars public on"
+    echo "Clicker Wi-Fi: mqtt://$lan:$(ini mqtt_public lan_port)  user $(ini mqtt_public user)" ;;
+  public) # link Internet cố định bằng Tailscale Funnel: ars public on | off | status
+    command -v tailscale >/dev/null || { echo "Chưa cài Tailscale. Cài:  curl -fsSL https://tailscale.com/install.sh | sh  rồi  sudo tailscale up"; exit 1; }
+    case "${2:-status}" in
+      on)
+        name=$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
+        [ -n "$name" ] || { echo "Tailscale chưa đăng nhập. Chạy: sudo tailscale up"; exit 1; }
+        echo "Bật Funnel cho cổng 80 (lần đầu Tailscale có thể in một link để bạn bấm cho phép HTTPS + Funnel)…"
+        sudo tailscale funnel --bg 80 || { echo "Không bật được Funnel — xem thông báo ở trên (cần Tailscale ≥ 1.52 và bật Funnel trong trang quản trị Tailscale)."; exit 1; }
+        sudo mysql ars -e "INSERT INTO settings (k,v) VALUES ('public_url','https://$name') ON DUPLICATE KEY UPDATE v=VALUES(v)"
+        echo; echo "Link cố định qua Internet:"; echo "   Giáo viên: https://$name/gv"; echo "   Học sinh : https://$name/hs" ;;
+      off)
+        sudo tailscale funnel reset && sudo mysql ars -e "DELETE FROM settings WHERE k='public_url'" && echo "Đã tắt link Internet." ;;
+      *) tailscale funnel status ;;
+    esac ;;
+  lan-name) # đổi tên cố định trong LAN: ars lan-name lop-hoc.local
+    n="${2:-}"; [[ "$n" =~ ^[a-z0-9-]+\.local$ ]] || { echo "Tên phải dạng ten.local (chữ thường, số, gạch ngang)"; exit 1; }
+    sudo sed -i "/^\[lan\]/,/^\[/ s/^name *=.*/name = $n/" $DST/config.ini
+    sudo mysql ars -e "INSERT INTO settings (k,v) VALUES ('lan_name','$n') ON DUPLICATE KEY UPDATE v=VALUES(v)"
+    sudo systemctl restart ars-mdns && echo "Đã đổi: http://$n/gv  ·  http://$n/hs" ;;
+  ports)  # liệt kê cổng serial để tìm gateway
+    python3 -m serial.tools.list_ports -v ;;
+  mqtt)   # xem mọi bản tin MQTT (gói clicker, lệnh STATE…)
+    mosquitto_sub -v -t 'ars/#' ;;
+  db)     # mở MariaDB trên terminal, đã chọn sẵn CSDL ars (thoát: exit)
+    sudo mysql --default-character-set=utf8mb4 ars ;;
+  sql)    # chạy nhanh một câu SQL: ars sql "SELECT * FROM students LIMIT 5"
+    sudo mysql --default-character-set=utf8mb4 -t ars -e "$2" ;;
+  tables) # liệt kê các bảng và số dòng
+    sudo mysql --default-character-set=utf8mb4 -t ars -e "SELECT table_name AS bang, table_rows AS so_dong_uoc_tinh FROM information_schema.tables WHERE table_schema='ars' ORDER BY table_name" ;;
+  watch)  # theo dõi CSDL trực tiếp, làm mới mỗi giây: ars watch [số dòng đáp án]
+    sudo ARS_WATCH_N="${2:-10}" bash -c 'while :; do o=$(bash '"$DST"'/deploy/ars-watch 2>&1); printf "\033[H\033[2J%s\n" "$o"; sleep 1; done' ;;
+  gv)     # liệt kê tài khoản giáo viên
+    sudo mysql --default-character-set=utf8mb4 -t ars -e "SELECT id, username AS ten_dang_nhap, full_name AS ho_ten, IF(is_admin,'quản trị','') AS quyen, IF(active,'','KHOÁ') AS trang_thai, last_login AS dang_nhap_cuoi FROM teachers" ;;
+  reset-gv) # đặt lại mật khẩu giáo viên: ars reset-gv [tên đăng nhập]
+    u="${2:-}"
+    [ -n "$u" ] || { sudo mysql -N ars -e "SELECT username FROM teachers" | sed 's/^/  - /'; read -rp "Tên đăng nhập: " u; }
+    [ "$(sudo mysql -N ars -e "SELECT COUNT(*) FROM teachers WHERE username='${u//\'/}'")" = 1 ] || { echo "Không có tài khoản '$u'"; exit 1; }
+    read -rsp "Mật khẩu mới (≥ 6 ký tự): " p1; echo; read -rsp "Nhập lại: " p2; echo
+    [ "$p1" = "$p2" ] && [ ${#p1} -ge 6 ] || { echo "Mật khẩu không khớp hoặc quá ngắn"; exit 1; }
+    h=$(P="$p1" php -r 'echo password_hash(getenv("P"), PASSWORD_DEFAULT);')
+    sudo mysql ars -e "UPDATE teachers SET password_hash='$h' WHERE username='${u//\'/}'" && echo "Đã đặt lại mật khẩu cho $u" ;;
+  backup) # sao lưu CSDL: ars backup [file]
+    f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
+  *)
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | sim [n] [room] [ble|wifi] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+esac

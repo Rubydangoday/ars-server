@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# In một lần ảnh chụp CSDL ARS (lệnh "ars watch" gọi lại mỗi giây). Chạy bằng root (sudo).
+q() { mysql --default-character-set=utf8mb4 -t ars -e "$1"; }
+h() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+printf '\033[1;34mARS · CSDL lúc %s\033[0m   (Ctrl+C để thoát)\n' "$(date +%H:%M:%S)"
+
+h "Buổi đang chạy"
+q "SELECT s.id AS buoi, c.name AS lop, c.room_id AS room, qs.title AS bo_cau_hoi,
+          q.position AS cau_dang_chieu, sq.status AS trang_thai,
+          (SELECT COUNT(*) FROM session_logins l WHERE l.session_id = s.id) AS diem_danh,
+          (SELECT COUNT(DISTINCT r.seat_no) FROM responses r WHERE r.session_q_id = sq.id) AS da_tra_loi
+   FROM sessions s
+   JOIN classes c ON c.id = s.class_id
+   JOIN question_sets qs ON qs.id = s.set_id
+   LEFT JOIN questions q ON q.id = s.current_q
+   LEFT JOIN session_questions sq ON sq.session_id = s.id AND sq.question_id = s.current_q
+   WHERE s.status = 'running'"
+
+h "Đáp án clicker mới nhất  [responses]"
+q "SELECT DATE_FORMAT(r.received_at, '%H:%i:%s') AS luc, r.seat_no AS ghe, st.full_name AS hoc_sinh,
+          q.position AS cau, r.answer AS chon, IFNULL(q.correct, '-') AS dap_an,
+          IF(q.correct IS NULL, '-', IF(r.answer = q.correct, 'đúng', 'sai')) AS kq, r.mac, r.rssi
+   FROM responses r
+   JOIN session_questions sq ON sq.id = r.session_q_id
+   JOIN sessions s ON s.id = sq.session_id
+   JOIN questions q ON q.id = sq.question_id
+   LEFT JOIN students st ON st.class_id = s.class_id AND st.seat_no = r.seat_no
+   ORDER BY r.id DESC LIMIT ${ARS_WATCH_N:-10}"
+
+h "Điểm danh mới nhất  [session_logins]"
+q "SELECT DATE_FORMAT(l.logged_at, '%H:%i:%s') AS luc, l.session_id AS buoi, l.seat_no AS ghe, st.full_name AS hoc_sinh, l.mac
+   FROM session_logins l
+   JOIN sessions s ON s.id = l.session_id
+   LEFT JOIN students st ON st.class_id = s.class_id AND st.seat_no = l.seat_no
+   ORDER BY l.id DESC LIMIT 5"
+
+h "Gói bị loại mới nhất  [rejected]"
+q "SELECT DATE_FORMAT(received_at, '%H:%i:%s') AS luc, room_id AS room, seat_no AS ghe, qid AS cau,
+          answer AS chon, reason AS ly_do, mac
+   FROM rejected ORDER BY id DESC LIMIT 5"
+
+h "Học sinh làm bài trên web  [practice_items]"
+q "SELECT DATE_FORMAT(i.answered_at, '%H:%i:%s') AS luc, a.student_code AS mssv, a.title AS bai,
+          i.round AS luot, i.answer AS chon, q.correct AS dap_an, IF(i.is_correct, 'đúng', 'sai') AS kq
+   FROM practice_items i
+   JOIN practice_attempts a ON a.id = i.attempt_id
+   JOIN questions q ON q.id = i.question_id
+   WHERE i.answered_at IS NOT NULL
+   ORDER BY i.answered_at DESC, i.id DESC LIMIT 8"

@@ -1,0 +1,30 @@
+; Cấu hình chung cho bridge.py, ingest.py và web PHP.
+; Chép thành config.ini rồi sửa mật khẩu. Không đưa config.ini lên GitHub.
+
+[db]
+host = 127.0.0.1
+port = 3306
+name = ars
+user = ars
+password = doi_mat_khau_nay
+
+[mqtt]
+host = 127.0.0.1
+port = 1883
+
+[gateway]
+; cổng USB của gateway: Windows "COM5", Linux "/dev/ttyACM0", macOS "/dev/cu.usbmodem1101"
+serial = COM5
+baud = 115200
+; mã lớp (room) mà gateway này phục vụ — trùng với room_id của lớp trên web
+room = 1
+
+[ingest]
+; pin dưới mức này (mV) thì web cảnh báo "pin yếu"
+low_batt_mv = 2600
+; phát lại STATE định kỳ (giây) dù không có gì thay đổi
+state_refresh_s = 5
+
+[storage]
+; thư mục lưu file bài giảng (Ubuntu: installer tạo /var/lib/ars/uploads). Bỏ trống = ars-server/data/uploads
+; uploads = /var/lib/ars/uploads

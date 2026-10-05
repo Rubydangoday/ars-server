@@ -1,0 +1,17 @@
+[Unit]
+Description=ARS ingest — kiểm tra gói clicker, ghi CSDL, soạn trạng thái cho gateway
+After=network.target mariadb.service mosquitto.service
+Wants=mariadb.service mosquitto.service
+
+[Service]
+User=ars
+Group=ars
+WorkingDirectory=/opt/ars-server
+Environment=ARS_CONFIG=/opt/ars-server/config.ini
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/ars-server/ingest/ingest.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

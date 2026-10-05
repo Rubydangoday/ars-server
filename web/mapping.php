@@ -1,0 +1,10 @@
+<?php
+require __DIR__.'/lib/bootstrap.php';$t=require_login();$id=(int)($_GET['class']??0);$c=$id?own_class($id):null;
+if($_SERVER['REQUEST_METHOD']==='POST')try{
+ if(!$c)throw new RuntimeException('Chọn lớp.');$seat=(int)$_POST['seat'];if(!qv('SELECT 1 FROM students WHERE class_id=? AND seat_no=?',[$id,$seat]))throw new RuntimeException('Ghế không thuộc lớp.');
+ if($_POST['action']==='unbind')q('DELETE FROM device_mappings WHERE class_id=? AND seat_no=?',[$id,$seat]);
+ else{$mac=strtoupper(trim($_POST['mac']??''));if(!preg_match('/^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$/',$mac))throw new RuntimeException('MAC không hợp lệ.');if(qv('SELECT 1 FROM device_mappings WHERE class_id=? AND mac=? AND seat_no<>?',[$id,$mac,$seat]))throw new RuntimeException('Remote đã ghép học sinh khác. Bỏ ghép trước.');q('INSERT INTO device_mappings(class_id,seat_no,mac) VALUES(?,?,?) ON DUPLICATE KEY UPDATE mac=VALUES(mac)',[$id,$seat,$mac]);}
+ flash('Đã cập nhật. Remote cần điểm danh lại; nên đổi ghép nối ngoài giờ học.');redirect('mapping.php?class='.$id);
+}catch(Throwable $e){flash($e instanceof PDOException?'Remote này đã ghép với một học sinh khác.':$e->getMessage(),'bad');}
+page_head('Ghép nối Remote','devices.php');echo '<h1>Ghép nối Remote ↔ học sinh</h1><p>Chỉ ghế được ghép mới ràng buộc MAC. Ghế chưa ghép vẫn cho đăng nhập theo ID như trước.</p><form method="get"><select name="class">';foreach(qall('SELECT * FROM classes WHERE teacher_id=?',[$t['id']]) as $r)echo '<option value="'.$r['id'].'"'.((int)$r['id']===$id?' selected':'').'>'.h($r['name']).'</option>';echo '</select><button>Chọn lớp</button></form>';
+if($c)foreach(qall('SELECT s.*,m.mac FROM students s LEFT JOIN device_mappings m ON m.class_id=s.class_id AND m.seat_no=s.seat_no WHERE s.class_id=? ORDER BY s.seat_no',[$id]) as $r)echo '<form method="post" class="card">'.csrf_field().'<input type="hidden" name="seat" value="'.$r['seat_no'].'"><b>#'.$r['seat_no'].' '.h($r['full_name']).'</b> <input name="mac" placeholder="AA:BB:CC:DD:EE:FF" value="'.h($r['mac']).'"><button name="action" value="bind">Ghép</button><button name="action" value="unbind">Bỏ ghép</button></form>';page_foot();

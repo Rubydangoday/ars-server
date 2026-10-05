@@ -1,0 +1,12 @@
+[Unit]
+Description=ARS - ten co dinh trong mang LAN (ars.local) qua mDNS
+After=network-online.target avahi-daemon.service
+Wants=network-online.target avahi-daemon.service
+
+[Service]
+ExecStart=/opt/ars-server/deploy/ars-mdns.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
