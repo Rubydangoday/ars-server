@@ -71,6 +71,7 @@ if ($act === 'oauth') {
 }
 if ($act === 'general') {
     setting_set('org_name', mb_substr(trim($_POST['org_name'] ?? ''), 0, 80) ?: null);
+    setting_set('privacy_contact', mb_substr(trim($_POST['privacy_contact'] ?? ''), 0, 120) ?: null);
     flash('Đã lưu.');
     redirect('settings.php#general');
 }
@@ -187,6 +188,7 @@ page_head('Cài đặt', 'settings.php');
       <h2>Thông tin chung</h2>
       <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="action" value="general">
         <label style="flex:1">Tên trường / khoa (hiện ở thanh trên cùng) <input name="org_name" value="<?= h(setting('org_name', '')) ?>" placeholder="VD: Khoa Điện – Điện tử, HCMUTE"></label>
+        <label style="flex:1">Email liên hệ quyền riêng tư <input name="privacy_contact" value="<?= h(setting('privacy_contact', '')) ?>" placeholder="VD: phongdaotao@truong.edu.vn"></label>
         <button class="primary">Lưu</button>
       </form>
     </section>

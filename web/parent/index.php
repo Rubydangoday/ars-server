@@ -27,8 +27,8 @@ if($tab==='login'){
    .'<label style="order:3">Họ tên<input name="full_name" placeholder="Nguyễn Thị B" value="'.h($_POST['full_name']??'').'"></label><label style="order:3">Tên đăng nhập<input name="username" autocomplete="username" placeholder="3–50 ký tự, không dấu" value="'.h($_POST['username']??'').'"></label><label style="order:3">Mật khẩu (10 ký tự trở lên)<input type="password" name="password" minlength="10" autocomplete="new-password"></label>'
    .'<button class="primary" name="action" value="register" style="order:4">Tạo tài khoản</button><div class="oauth" style="order:1;margin:0">';
  foreach(OAUTH_PROVIDERS as $k=>$v){$why=oauth_status($k);echo '<button class="oauth-btn oauth-'.$k.'" name="provider" value="'.$k.'" formaction="../oauth.php" formnovalidate'.($why?' disabled title="'.h($why).'"':'').'>'.oauth_logo($k).'<span>Đăng ký với '.h($v).'</span></button>';}
- $notes=array_unique(array_filter(array_map('oauth_status',array_keys(OAUTH_PROVIDERS))));
- echo ($notes?'<p class="oauth-note">ⓘ '.h(implode(' ',$notes)).'</p>':'').'</div><div class="auth-or" style="order:2;margin:2px 0"><span>hoặc tạo tài khoản bằng mật khẩu</span></div></form>';
+ $notes=[];foreach(OAUTH_PROVIDERS as $k=>$v)if($s=oauth_status($k))$notes[$s][]=$v;
+ echo ($notes?'<p class="oauth-note">ⓘ '.implode('<br>ⓘ ',array_map(fn($s,$who)=>h(implode(', ',$who).': '.$s),array_keys($notes),$notes)).'</p>':'').'</div><div class="auth-or" style="order:2;margin:2px 0"><span>hoặc tạo tài khoản bằng mật khẩu</span></div></form>';
  echo '<p class="auth-links"><a href="index.php">Đã có tài khoản? Đăng nhập</a></p>';
 }
 auth_close();

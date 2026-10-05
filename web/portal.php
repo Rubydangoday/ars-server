@@ -11,6 +11,7 @@ page_head(setting('org_name', 'ARS — Lớp học tương tác'), '', true);
     <a class="tile" href="index.php"><span class="big">🧑‍🏫</span><b>Giáo viên</b><span class="muted small">Quản lý lớp, soạn câu hỏi, điều khiển buổi học</span></a>
     <a class="tile" href="student/"><span class="big">🎒</span><b>Học sinh</b><span class="muted small">Bài giảng, ôn tập, xem lại bài, trợ lý học tập</span></a>
   </div>
+  <p class="muted small"><a href="privacy.php">Chính sách quyền riêng tư</a> · <a href="privacy.php#xoa-du-lieu">Xoá dữ liệu</a></p>
   <p class="muted small" style="margin-top:22px">Lần sau vào thẳng: <b><?= h(current_base()) ?>/gv</b> (giáo viên) · <b><?= h(current_base()) ?>/hs</b> (học sinh)</p>
 </div>
 <?php page_foot();

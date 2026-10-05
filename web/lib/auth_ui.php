@@ -42,7 +42,8 @@ function auth_open(string $role, string $title, string $subtitle, string $root =
     foreach ($flash as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h($m) . '</div>';
 }
 function auth_close(): void {
-    echo '</div><p class="auth-foot muted small">© ' . date('Y') . ' ARS · Dữ liệu lớp học lưu trên máy chủ của trường</p></section></div>';
+    $root = str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/parent/') ? '../' : '';
+    echo '</div><p class="auth-foot muted small">© ' . date('Y') . ' ARS · Dữ liệu lớp học lưu trên máy chủ của trường · <a href="' . $root . 'privacy.php">Chính sách quyền riêng tư</a></p></section></div>';
     // Hiện/ẩn mật khẩu cho mọi ô password trong thẻ
     echo '<script>document.querySelectorAll(".auth-card input[type=password]").forEach(i=>{const b=document.createElement("button");b.type="button";b.className="pw-eye";b.setAttribute("aria-label","Hiện mật khẩu");b.textContent="👁";'
        . 'b.onclick=()=>{const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"🙈":"👁";b.setAttribute("aria-label",s?"Ẩn mật khẩu":"Hiện mật khẩu");i.focus();};i.parentElement.classList.add("has-eye");i.after(b);});</script>';

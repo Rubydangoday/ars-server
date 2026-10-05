@@ -131,10 +131,10 @@ function oauth_buttons(string $for, string $mode, string $root = '', string $lab
     foreach (OAUTH_PROVIDERS as $p => $name) {
         if (!$always && oauth_status($p) !== '') continue;
         $html .= oauth_button($p, $for, $mode, $root, $label, $hidden);
-        if ($s = oauth_status($p)) $why[$s] = true;
+        if ($s = oauth_status($p)) $why[$s][] = $name;
     }
     if (!$html) return '';
-    return '<div class="oauth">' . $html . ($why ? '<p class="oauth-note">ⓘ ' . implode('<br>ⓘ ', array_map('h', array_keys($why))) . '</p>' : '') . '</div>';
+    return '<div class="oauth">' . $html . ($why ? '<p class="oauth-note">ⓘ ' . implode('<br>ⓘ ', array_map(fn($s, $who) => h(implode(', ', $who) . ': ' . $s), array_keys($why), $why)) . '</p>' : '') . '</div>';
 }
 /** Khối "Đăng nhập bằng Google / Facebook" trong trang tài khoản: liên kết / gỡ liên kết. */
 function oauth_manage_html(string $for, string $key, string $root = ''): string {
