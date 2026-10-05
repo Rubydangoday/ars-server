@@ -258,7 +258,7 @@ button.opt:disabled { opacity: 1; cursor: default; }
 
 /* ===================================================================== v13: hiệu ứng học sinh (giữ nguyên màu)
    Thẻ nổi lên lần lượt kiểu lò xo, đáp án nhún khi rê/bấm, phản hồi đúng nảy / sai lắc, bài tập có thanh tiến trình dính trên cùng. */
-@keyframes stu-rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+@keyframes stu-rise { from { transform: translateY(14px) scale(.98); } }   /* không làm trong suốt: nội dung luôn nhìn thấy */
 @keyframes stu-bounce { 0% { transform: scale(.85); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
 @keyframes stu-check { from { transform: scale(0) rotate(-30deg); } 70% { transform: scale(1.3); } }
 @keyframes stu-glow { 50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, .25); } }
@@ -298,3 +298,9 @@ body.stu .lb tr.me td { animation: stu-glow 1.2s ease-in-out 2; }
 .lms-homework label.hw-opt:has(input:checked) b { background: var(--violet); color: #fff; }
 .lms-homework label.hw-opt:has(input:focus-visible) { outline: 3px solid #93c5fd; outline-offset: 2px; }
 .lms-homework fieldset:disabled label.hw-opt { cursor: default; transform: none; }
+/* chọn vai trò trên màn đăng nhập học sinh */
+.stu-roles { display: flex; justify-content: center; gap: 6px; margin: 4vh auto -2vh; flex-wrap: wrap; }
+.stu-roles a { padding: 8px 14px; border-radius: 99px; background: #fff; color: var(--muted); font-weight: 800; font-size: 14px; box-shadow: 0 4px 12px rgba(139, 92, 246, .12); }
+.stu-roles a.on { background: linear-gradient(100deg, #ec4899, #8b5cf6); color: #fff; }
+.stu-roles a:hover { text-decoration: none; transform: translateY(-1px); }
+body.stu .login .oauth-btn { border-radius: 14px; font-weight: 800; }

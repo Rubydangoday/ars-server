@@ -1,6 +1,7 @@
 <?php
 // Giáo viên tự tạo tài khoản. Mặc định cần "mã mời giáo viên" do quản trị viên cấp (trang Giáo viên).
 require __DIR__ . '/lib/bootstrap.php';
+require __DIR__ . '/lib/auth_ui.php';
 
 if (me()) redirect('dashboard.php');
 if ((int)qv('SELECT COUNT(*) FROM teachers') === 0) redirect('index.php');      // chưa có ai → trang tạo tài khoản đầu tiên
@@ -30,10 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mode !== 'closed') {
     }
 }
 
-page_head('Tạo tài khoản giáo viên', '', true);
+auth_open('teacher', 'Tạo tài khoản giáo viên', 'Mỗi giáo viên có lớp, câu hỏi và bài giảng riêng.');
 ?>
-<div class="login">
-  <h1>Tạo tài khoản giáo viên</h1>
   <?php if ($mode === 'closed'): ?>
     <div class="flash warn">Server đang tạm đóng đăng ký giáo viên. Liên hệ giáo viên quản trị để được tạo tài khoản.</div>
   <?php else: ?>
@@ -52,5 +51,4 @@ page_head('Tạo tài khoản giáo viên', '', true);
     </form>
   <?php endif; ?>
   <p class="small" style="margin-top:12px"><a href="index.php">← Đã có tài khoản? Đăng nhập</a></p>
-</div>
-<?php page_foot();
+<?php auth_close();

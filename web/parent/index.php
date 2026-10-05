@@ -1,5 +1,5 @@
 <?php
-require __DIR__.'/../lib/lms.php';require __DIR__.'/../lib/oauth.php';
+require __DIR__.'/../lib/lms.php';require __DIR__.'/../lib/oauth.php';require __DIR__.'/../lib/auth_ui.php';
 if(isset($_GET['logout'])){unset($_SESSION['parent']);redirect('index.php');}
 if($_SERVER['REQUEST_METHOD']==='POST')try{
  $act=$_POST['action']??'';$user=trim($_POST['username']??'');$pass=$_POST['password']??'';
@@ -13,6 +13,22 @@ if($_SERVER['REQUEST_METHOD']==='POST')try{
   q('INSERT INTO parent_links(parent_id,student_code,class_id) VALUES(?,?,?)',[$pid,$i['student_code'],$i['class_id']]);q('UPDATE parent_invites SET used_at=NOW() WHERE id=?',[$i['id']]);db()->commit();flash('Đã tạo tài khoản. Hãy đăng nhập.');redirect('index.php');
  }throw new RuntimeException('Lệnh không hợp lệ.');
 }catch(Throwable $e){if(db()->inTransaction())db()->rollBack();flash($e instanceof PDOException?'Tên đăng nhập đã tồn tại hoặc chưa thể tạo tài khoản.':$e->getMessage(),'bad');}
-page_head('Phụ huynh','',true);echo '<h1>Cổng phụ huynh</h1><form method="post" class="card stack">'.csrf_field().'<h2>Đăng nhập</h2><label>Tên đăng nhập<input name="username" autocomplete="username" required></label><label>Mật khẩu<input type="password" name="password" autocomplete="current-password" required></label><button name="action" value="login">Đăng nhập</button></form>'.oauth_buttons('parent','login','../').'<form method="post" class="card stack">'.csrf_field().'<h2>Đăng ký bằng mã mời giáo viên cấp</h2><label>Mã mời<input name="invite" value="'.h($_GET['invite']??'').'" required></label><label>Họ tên<input name="full_name" required></label><label>Tên đăng nhập<input name="username" required></label><label>Mật khẩu (10 ký tự trở lên)<input type="password" name="password" minlength="10" required></label><button name="action" value="register">Tạo tài khoản</button></form>';
-if($on=oauth_enabled()){echo '<form method="post" action="../oauth.php" class="card stack">'.csrf_field().'<input type="hidden" name="action" value="start"><input type="hidden" name="for" value="parent"><input type="hidden" name="mode" value="register"><h2>Hoặc đăng ký nhanh</h2><label>Mã mời<input name="invite" value="'.h($_GET['invite']??'').'" required></label><div class="oauth">';foreach($on as $k=>$v)echo '<button class="oauth-btn oauth-'.$k.'" name="provider" value="'.$k.'"><span class="oauth-ico">'.($k==='google'?'G':'f').'</span>Đăng ký với '.h($v).'</button>';echo '</div><span class="muted small">Không cần nhớ mật khẩu: lần sau bấm “Đăng nhập với '.h(implode(' / ',$on)).'”.</span></form>';}
-page_foot();
+$tab=($_GET['tab']??'')==='register'||!empty($_GET['invite'])||($_POST['action']??'')==='register'?'register':'login';
+auth_open('parent',$tab==='login'?'Chào phụ huynh 👋':'Tạo tài khoản phụ huynh',$tab==='login'?'Xem con học thế nào trên lớp, bài tập và nhận xét của thầy cô.':'Nhập <b>mã mời</b> thầy cô gửi riêng cho bạn để liên kết đúng học sinh.','../');
+echo '<nav class="auth-tabs"><a href="index.php"'.($tab==='login'?' class="on"':'').'>Đăng nhập</a><a href="index.php?tab=register"'.($tab==='register'?' class="on"':'').'>Đăng ký bằng mã mời</a></nav>';
+if($tab==='login'){
+ echo oauth_buttons('parent','login','../','Đăng nhập với',[],true).auth_divider();
+ echo '<form method="post" class="stack">'.csrf_field().'<label>Tên đăng nhập<input name="username" autocomplete="username" required placeholder="Tên đăng nhập của bạn"></label><label>Mật khẩu<input type="password" name="password" autocomplete="current-password" required placeholder="••••••••"></label><button class="primary" name="action" value="login">Đăng nhập</button></form>';
+ echo '<p class="auth-links"><a href="index.php?tab=register">Chưa có tài khoản? Đăng ký</a><span class="muted small">Quên mật khẩu: nhờ thầy cô cấp mã mời mới</span></p>';
+}else{
+ // Một form: nút "Tạo tài khoản" đứng trước trong DOM (phím Enter), nút Google/Facebook gửi sang ../oauth.php bằng formaction.
+ echo '<form method="post" class="stack reg-form">'.csrf_field().'<input type="hidden" name="for" value="parent"><input type="hidden" name="mode" value="register">'
+   .'<label style="order:0">Mã mời<input name="invite" value="'.h($_POST['invite']??$_GET['invite']??'').'" required autocomplete="off" placeholder="32 ký tự thầy cô gửi"></label>'
+   .'<label style="order:3">Họ tên<input name="full_name" placeholder="Nguyễn Thị B" value="'.h($_POST['full_name']??'').'"></label><label style="order:3">Tên đăng nhập<input name="username" autocomplete="username" placeholder="3–50 ký tự, không dấu" value="'.h($_POST['username']??'').'"></label><label style="order:3">Mật khẩu (10 ký tự trở lên)<input type="password" name="password" minlength="10" autocomplete="new-password"></label>'
+   .'<button class="primary" name="action" value="register" style="order:4">Tạo tài khoản</button><div class="oauth" style="order:1;margin:0">';
+ foreach(OAUTH_PROVIDERS as $k=>$v){$why=oauth_status($k);echo '<button class="oauth-btn oauth-'.$k.'" name="provider" value="'.$k.'" formaction="../oauth.php" formnovalidate'.($why?' disabled title="'.h($why).'"':'').'>'.oauth_logo($k).'<span>Đăng ký với '.h($v).'</span></button>';}
+ $notes=array_unique(array_filter(array_map('oauth_status',array_keys(OAUTH_PROVIDERS))));
+ echo ($notes?'<p class="oauth-note">ⓘ '.h(implode(' ',$notes)).'</p>':'').'</div><div class="auth-or" style="order:2;margin:2px 0"><span>hoặc tạo tài khoản bằng mật khẩu</span></div></form>';
+ echo '<p class="auth-links"><a href="index.php">Đã có tài khoản? Đăng nhập</a></p>';
+}
+auth_close();

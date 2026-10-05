@@ -89,19 +89,23 @@ def fb(i, name='FB User'): return {'id': i, 'name': name, 'email': None}
 def oauth(s, page, provider, data):
     """Bấm nút trên trang `page`: POST tới oauth.php, theo chuyển hướng qua nhà cung cấp giả lập rồi về ARS."""
     r = s.get(BASE + page); soup = BeautifulSoup(r.text, 'html.parser')
-    forms = [f for f in soup.select('form') if (f.get('action') or '').endswith('oauth.php') and f.select_one('input[name=action][value=start]')
-             and (f.select_one(f'input[name=provider][value={provider}]') or f.select_one(f'button[name=provider][value={provider}]'))]
-    expect(forms, f'{provider} button on {page}')
-    f = forms[0]; fields = {i['name']: i.get('value', '') for i in f.select('input[name]')}
+    cands = []   # (form, URL gửi tới): form riêng có action=start, hoặc nút formaction trong form đăng ký phụ huynh
+    for f in soup.select('form'):
+        if (f.get('action') or '').endswith('oauth.php') and f.select_one('input[name=action][value=start]') and f.select_one(f'input[name=provider][value={provider}]'): cands.append((f, f['action']))
+        b = f.select_one(f'button[name=provider][value={provider}][formaction]')
+        if b: cands.append((f, b['formaction']))
+    expect(cands, f'{provider} button on {page}')
+    f, action = cands[0]; fields = {i['name']: i.get('value', '') for i in f.select('input[name]')}
     fields.update(data); fields['provider'] = provider
-    url = requests.compat.urljoin(BASE + page, f['action'])
+    url = requests.compat.urljoin(BASE + page, action)
     r = s.post(url, data=fields); noerr(r, 'oauth ' + provider); return r
 
 p = d['prefix']; cls = d['class']; t1id, t2id, t3id = d['teachers']
 saved = {r['k']: r['v'] for r in sql('SELECT k, v FROM settings')}
 try:
     sql('DELETE FROM settings WHERE k LIKE "oauth\\_%%"')
-    expect('Đăng nhập với Google' not in requests.get(BASE + 'index.php').text, 'No buttons until configured')
+    soup = BeautifulSoup(requests.get(BASE + 'index.php').text, 'html.parser'); btn = soup.select_one('button.oauth-google')
+    expect(btn is not None and btn.has_attr('disabled') and 'chưa bật' in soup.select_one('.oauth-note').text, 'Buttons visible but disabled until configured')
     t1 = login(f'{p}_1')
     post(t1, 'settings.php', {'action': 'oauth', 'google_id': SECRETS['google'][0], 'google_secret': SECRETS['google'][1],
                               'facebook_id': SECRETS['facebook'][0], 'facebook_secret': SECRETS['facebook'][1]})
@@ -112,7 +116,8 @@ try:
     post(t1, 'settings.php', {'action': 'oauth', 'google_id': SECRETS['google'][0], 'google_secret': '••••••••',
                               'facebook_id': SECRETS['facebook'][0], 'facebook_secret': '••••••••'})
     expect(sql1('SELECT v FROM settings WHERE k="oauth_google_secret"')['v'] == 'g-secret', 'Masked secret field keeps old secret')
-    for page in ['index.php', 'student/index.php', 'parent/index.php']: expect('Đăng nhập với Google' in requests.get(BASE + page).text, 'Buttons on ' + page)
+    for page in ['index.php', 'student/index.php', 'parent/index.php', 'parent/index.php?tab=register']:
+        b = BeautifulSoup(requests.get(BASE + page).text, 'html.parser').select_one('button.oauth-google'); expect(b is not None and not b.has_attr('disabled'), 'Enabled button on ' + page)
 
     # ---- giáo viên
     anon = requests.Session(); NEXT['google'] = g('g-teacher-1')
@@ -155,16 +160,16 @@ try:
         r = post(t1, 'family.php?class=%d' % cls, {'action': 'invite', 'student_code': d['code'], 'class_id': cls})
         return BeautifulSoup(r.text, 'html.parser').select_one('div.card code').text
     n_parents = sql1('SELECT COUNT(*) n FROM parents')['n']
-    r = oauth(requests.Session(), 'parent/index.php', 'google', {'invite': 'abc', 'mode': 'register'}); expect('mã mời' in flash(r), 'Register requires invite format')
+    r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': 'abc'}); expect('mã mời' in flash(r), 'Register requires invite format')
     tok = invite(); NEXT['google'] = g('g-parent-1', 'ph@example.com', 'Phụ huynh Google')
-    par = requests.Session(); r = oauth(par, 'parent/index.php', 'google', {'invite': tok, 'mode': 'register'})
+    par = requests.Session(); r = oauth(par, 'parent/index.php?tab=register', 'google', {'invite': tok})
     expect(r.url.endswith('parent/home.php') and 'Học sinh kiểm thử' in r.text, 'Parent registers with Google + invite')
     expect(sql1('SELECT COUNT(*) n FROM parents')['n'] == n_parents + 1 and sql1('SELECT full_name FROM parents ORDER BY id DESC LIMIT 1')['full_name'] == 'Phụ huynh Google', 'Parent account created from profile')
-    r = oauth(requests.Session(), 'parent/index.php', 'google', {'invite': tok, 'mode': 'register'}); expect('hết hạn hoặc đã dùng' in flash(r), 'Invite single-use')
+    r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': tok}); expect('hết hạn hoặc đã dùng' in flash(r), 'Invite single-use')
     expect(sql1('SELECT COUNT(*) n FROM parents')['n'] == n_parents + 1, 'No orphan parent on failed register')
     r = oauth(requests.Session(), 'parent/index.php', 'google', {}); expect(r.url.endswith('parent/home.php'), 'Parent logs in with Google')
     expect('Gỡ liên kết' in par.get(BASE + 'parent/home.php').text, 'Parent manages linked account')
-    tok2 = invite(); r = oauth(requests.Session(), 'parent/index.php', 'google', {'invite': tok2, 'mode': 'register'})
+    tok2 = invite(); r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': tok2})
     expect(sql1('SELECT COUNT(*) n FROM parents')['n'] == n_parents + 1 and r.url.endswith('parent/home.php'), 'Existing Google parent reuses account')
     s = requests.Session(); r = s.post(BASE + 'oauth.php', data={'csrf': csrf(s, 'index.php'), 'action': 'start', 'provider': 'google', 'for': 'teacher', 'mode': 'register'})
     expect('không hợp lệ' in flash(r) and r.url.endswith('index.php'), 'Teacher register mode not allowed')

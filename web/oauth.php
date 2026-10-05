@@ -54,7 +54,7 @@ function take_invite(string $token): array {
 
 // ------------------------------------------------------------------ POST: bắt đầu / gỡ liên kết
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $p = $_POST['provider'] ?? ''; $for = $_POST['for'] ?? ''; $act = $_POST['action'] ?? '';
+    $p = $_POST['provider'] ?? ''; $for = $_POST['for'] ?? ''; $act = $_POST['action'] ?? 'start';   // nút formaction trong form đăng ký phụ huynh không gửi action
     if (!isset(OAUTH_PROVIDERS[$p]) || !in_array($for, OAUTH_TYPES, true)) { http_response_code(400); exit('Yêu cầu không hợp lệ.'); }
     if ($act === 'unlink') {
         $key = current_key($for);

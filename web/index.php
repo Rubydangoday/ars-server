@@ -2,6 +2,7 @@
 // Đăng nhập. Lần chạy đầu (chưa có tài khoản nào) → tạo tài khoản giáo viên đầu tiên.
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/oauth.php';
+require __DIR__ . '/lib/auth_ui.php';
 
 if (me()) redirect('dashboard.php');
 $first_run = (int)qv('SELECT COUNT(*) FROM teachers') === 0;
@@ -35,30 +36,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-page_head('Đăng nhập', '', true);
+auth_open('teacher', $first_run ? 'Chào mừng đến ARS' : 'Đăng nhập giáo viên',
+          $first_run ? 'Lần chạy đầu: tạo tài khoản quản trị cho máy chủ này.' : 'Quản lý lớp, soạn câu hỏi và điều khiển buổi học.');
 ?>
-<div class="login">
-  <h1>ARS — Hệ thống phản hồi lớp học</h1>
-  <p class="muted"><?= $first_run ? 'Lần chạy đầu: tạo tài khoản giáo viên.' : 'Đăng nhập dành cho giáo viên.' ?></p>
   <?php if ($err): ?><div class="flash err"><?= h($err) ?></div><?php endif; ?>
   <?php if (isset($_GET['locked'])): ?><div class="flash err">Tài khoản đã bị khoá. Liên hệ giáo viên quản trị server.</div><?php endif; ?>
   <?php if (!empty($_SESSION['show_recovery'])): $rc = $_SESSION['show_recovery']; unset($_SESSION['show_recovery']); ?>
     <div class="recovery"><b>Mã khôi phục mật khẩu của “<?= h($rc['user']) ?>”</b><code><?= h($rc['code']) ?></code>
       <span class="small">Chép hoặc chụp lại mã này. Khi quên mật khẩu, dùng mã ở trang “Quên mật khẩu”. Mã chỉ hiện một lần.</span></div>
   <?php endif; ?>
+  <?php if (!$first_run): ?><?= oauth_buttons('teacher', 'login', '', 'Đăng nhập với', [], true) ?><?= auth_divider() ?><?php endif; ?>
   <form method="post" class="stack">
     <?= csrf_field() ?>
     <?php if ($first_run): ?>
-      <label>Họ tên <input name="full_name" required value="<?= h($_POST['full_name'] ?? '') ?>"></label>
+      <label>Họ tên <input name="full_name" required value="<?= h($_POST['full_name'] ?? '') ?>" placeholder="Nguyễn Văn A"></label>
     <?php endif; ?>
-    <label>Tên đăng nhập <input name="username" required autofocus value="<?= h($_POST['username'] ?? '') ?>"></label>
-    <label>Mật khẩu <input name="password" type="password" required></label>
+    <label>Tên đăng nhập <input name="username" required autofocus autocomplete="username" value="<?= h($_POST['username'] ?? '') ?>" placeholder="vd: nguyenvana"></label>
+    <label>Mật khẩu <input name="password" type="password" required autocomplete="current-password" placeholder="••••••••"></label>
     <button class="primary"><?= $first_run ? 'Tạo tài khoản' : 'Đăng nhập' ?></button>
   </form>
-  <?= $first_run ? '' : oauth_buttons('teacher', 'login') ?>
-  <?php if (!$first_run): ?><p class="small" style="display:flex;justify-content:space-between;margin:8px 0 0">
-    <?php if (setting('teacher_signup', 'invite') !== 'closed'): ?><a href="register.php">Tạo tài khoản giáo viên mới</a><?php else: ?><span></span><?php endif; ?>
+  <?php if (!$first_run): ?><p class="auth-links">
+    <?php if (setting('teacher_signup', 'invite') !== 'closed'): ?><a href="register.php">Tạo tài khoản mới</a><?php else: ?><span></span><?php endif; ?>
     <a href="forgot.php">Quên mật khẩu?</a></p><?php endif; ?>
-  <p class="muted small">Học sinh: vào <a href="student/">cổng học sinh</a> (đăng nhập bằng MSSV).</p>
-</div>
-<?php page_foot();
+<?php auth_close();

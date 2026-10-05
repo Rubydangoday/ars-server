@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 student_head('Đăng nhập');
 ?>
+<nav class="stu-roles"><a href="../index.php">🧑‍🏫 Giáo viên</a><a class="on" href="./">🎒 Học sinh</a><a href="../parent/">👪 Phụ huynh</a></nav>
 <div class="login">
   <div class="mascot">🦉</div>
   <h1>Chào mừng bạn đến lớp học!</h1>
@@ -34,7 +35,7 @@ student_head('Đăng nhập');
     <label>Mật khẩu <input name="password" type="password" required></label>
     <button class="primary">Đăng nhập</button>
   </form>
-  <?= oauth_buttons('student', 'login', '../') ?>
+  <?= oauth_buttons('student', 'login', '../', 'Đăng nhập với', [], true) ?>
   <div class="or"><span>hoặc</span></div>
   <a class="btn big alt" href="register.php">✨ Tạo tài khoản mới</a>
   <p class="muted small center">Quên mật khẩu: nhờ giáo viên bấm “đặt lại MK” ở trang lớp.</p>

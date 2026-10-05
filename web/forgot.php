@@ -4,6 +4,7 @@
 //  - Mở từ máy khác: cần mã khôi phục (hiện khi tạo tài khoản hoặc tạo lại trong Cài đặt).
 //  - Cách khác trên terminal của laptop: ars reset-gv <tên đăng nhập>
 require __DIR__ . '/lib/bootstrap.php';
+require __DIR__ . '/lib/auth_ui.php';
 if (me()) redirect('settings.php#account');
 $local = is_local_request();
 $users = $local ? qall('SELECT username, full_name FROM teachers ORDER BY id') : [];
@@ -29,10 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('index.php');
     }
 }
-page_head('Quên mật khẩu', '', true);
+auth_open('teacher', 'Đặt lại mật khẩu', 'Dành cho tài khoản giáo viên.');
 ?>
-<div class="login">
-  <h1>Đặt lại mật khẩu giáo viên</h1>
   <?php if ($local): ?>
     <p class="muted">Bạn đang mở trang này trực tiếp trên máy chủ nên có thể đặt lại mật khẩu mà không cần mã khôi phục.</p>
   <?php else: ?>
@@ -52,5 +51,4 @@ page_head('Quên mật khẩu', '', true);
     <button class="primary">Đặt lại mật khẩu</button>
   </form>
   <p class="small"><a href="index.php">← Quay lại đăng nhập</a></p>
-</div>
-<?php page_foot();
+<?php auth_close();
