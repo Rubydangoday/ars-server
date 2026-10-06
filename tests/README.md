@@ -1,4 +1,8 @@
-# Kiểm thử v10
+# Kiểm thử
+
+**Cách nhanh nhất:** `bash tests/run_local.sh` — tự dựng MariaDB + PHP tạm trong /tmp, chạy mọi bộ test rồi dọn sạch; không đụng CSDL thật. Cần mariadb-server, php-cli, python3-requests, python3-bs4, python3-pymysql.
+
+## Chạy thủ công (v10)
 
 Chỉ chạy trên **CSDL thử nghiệm riêng**. Tests seed tạo giáo viên/lớp/học sinh/bài làm giả, không tự xóa dữ liệu. Không dùng server thật đang có lớp học. Schema ghi cứng tên `ars`, vì vậy dùng MariaDB instance riêng/cổng riêng để không nhầm CSDL.
 

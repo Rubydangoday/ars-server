@@ -23,6 +23,15 @@ Secret được lưu trong bảng settings và không hiển thị lại (ô hi�
 
 ## Cách người dùng sử dụng
 
+**Đăng nhập / đăng ký nhanh (không cần liên kết trước):** bấm **Đăng nhập với Google** (hoặc **Đăng ký với Google** ở trang tạo tài khoản). Nếu tài khoản Google chưa gắn với ARS, ARS chuyển tới **bước cuối** của từng vai trò, không cần mật khẩu:
+- **Giáo viên:** chế độ đăng ký *Ai có link cũng đăng ký được* → tạo tài khoản và vào thẳng; *Cần mã mời* → nhập mã mời giáo viên; *Đóng đăng ký* → chỉ người đã có tài khoản liên kết được. Đổi chế độ ở menu **Giáo viên** (quản trị).
+- **Học sinh:** nhập mã học sinh (+ mã tham gia lớp nếu chưa có trong danh sách). Mã đã có mật khẩu thì không tạo được bằng Google khác — đăng nhập bằng mật khẩu rồi liên kết.
+- **Phụ huynh:** chỉ nhập mã mời thầy cô gửi.
+- **Đã có tài khoản:** đăng nhập bằng mật khẩu một lần → ARS hỏi *“Liên kết Google … với tài khoản này?”* → **Liên kết**. ARS không tự gắn (an toàn cho máy tính dùng chung).
+- Tài khoản tạo bằng Google có mật khẩu ngẫu nhiên. Muốn đặt mật khẩu: Cài đặt → Tài khoản → *Tạo mã khôi phục* → trang *Quên mật khẩu*.
+
+**Cách cũ vẫn dùng được:**
+
 - **Liên kết** (giáo viên, học sinh, phụ huynh đã có tài khoản): đăng nhập bằng mật khẩu → *Cài đặt → Tài khoản* (giáo viên), *🔑 Đổi mật khẩu* (học sinh), cuối trang *Tiến độ của con* (phụ huynh) → **Liên kết Google / Facebook**. Lần sau bấm **Đăng nhập với Google / Facebook**.
 - **Phụ huynh mới**: cổng phụ huynh → *Hoặc đăng ký nhanh* → nhập mã mời → **Đăng ký với Google / Facebook**. Không cần đặt mật khẩu. Phụ huynh đã đăng ký bằng Google dùng mã mời mới để thêm con/lớp khác.
 - Học sinh phải đổi mật khẩu lần đầu trước khi liên kết. Giáo viên mới vẫn tạo tài khoản theo cách cũ (mã mời / Admin trường), rồi liên kết.

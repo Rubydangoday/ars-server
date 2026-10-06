@@ -110,6 +110,18 @@ check_csrf();
 function flash(string $msg, string $kind = 'ok'): void { $_SESSION['flash'][] = [$kind, $msg]; }
 /** Hiệu ứng chạy một lần ở trang kế tiếp (assets/fx.js): celebrate | correct | wrong | success. */
 function fx_once(string $name): void { $_SESSION['fx'] = $name; }
+/** Sau khi đăng nhập bằng mật khẩu: hỏi có liên kết tài khoản Google/Facebook vừa bấm (lib/oauth.php lưu trong phiên) không.
+ *  Không tự liên kết: trên máy dùng chung, Google của người trước không được gắn nhầm vào tài khoản người sau. */
+function oauth_pending_prompt(string $for, string $root): string {
+    $p = $_SESSION['oauth_pending'] ?? null;
+    if (!$p || $p['for'] !== $for || time() - $p['at'] > 900) return '';
+    $name = ['google' => 'Google', 'facebook' => 'Facebook'][$p['provider']] ?? '';
+    $btn = fn($act, $label, $cls) => '<form method="post" action="' . h($root) . 'oauth.php" style="display:inline">' . csrf_field() . '<input type="hidden" name="action" value="' . $act . '">'
+        . '<input type="hidden" name="provider" value="' . h($p['provider']) . '"><input type="hidden" name="for" value="' . $for . '"><button class="' . $cls . '">' . $label . '</button></form>';
+    return '<div class="flash warn oauth-confirm"><b>Liên kết ' . $name . ' ' . h($p['email'] ?? $p['name'] ?? '') . ' với tài khoản này?</b> '
+         . 'Lần sau bấm “Đăng nhập với ' . $name . '” là vào thẳng. Chỉ đồng ý nếu đó là tài khoản ' . $name . ' của chính bạn. '
+         . $btn('confirm_link', 'Liên kết', 'primary small') . ' ' . $btn('skip_link', 'Không', 'small') . '</div>';
+}
 function fx_attr(): string { $f = $_SESSION['fx'] ?? ''; unset($_SESSION['fx']); return $f ? ' data-fx="' . h($f) . '"' : ''; }
 function redirect(string $url): void { header('Location: ' . $url); exit; }
 
@@ -331,6 +343,8 @@ function page_head(string $title, string $active = '', bool $bare = false): void
     echo '<main>';
     foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h($m) . '</div>';
     unset($_SESSION['flash']);
+    if (str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/parent/')) { if (!empty($_SESSION['parent'])) echo oauth_pending_prompt('parent', '../'); }
+    elseif ($t) echo oauth_pending_prompt('teacher', '');
 }
 
 function page_foot(string $script = ''): void {

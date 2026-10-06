@@ -121,7 +121,11 @@ try:
 
     # ---- giáo viên
     anon = requests.Session(); NEXT['google'] = g('g-teacher-1')
-    r = oauth(anon, 'index.php', 'google', {}); expect('chưa liên kết' in flash(r) and 'dashboard' not in r.url, 'Unlinked Google cannot log in (no email auto-match)')
+    r = oauth(anon, 'index.php', 'google', {})
+    expect(r.url.endswith('register.php') and 'gv@example.com' in r.text and 'dashboard' not in r.url, 'Unlinked Google goes to sign-up step (no email auto-match)')
+    expect(sql1('SELECT COUNT(*) n FROM oauth_identities WHERE subject="g-teacher-1"')['n'] == 0, 'Nothing linked before sign-up completes')
+    anon.post(BASE + 'oauth.php', data={'csrf': csrf(anon, 'register.php'), 'action': 'cancel', 'provider': 'google', 'for': 'teacher'})
+    expect('Đang tạo tài khoản bằng' not in anon.get(BASE + 'register.php').text, 'Cancel clears pending sign-up')
     r = oauth(t1, 'settings.php', 'google', {}); expect('Đã liên kết Google' in flash(r), 'Teacher links Google')
     expect(sql1('SELECT user_key FROM oauth_identities WHERE provider="google" AND subject="g-teacher-1" AND user_type="teacher"')['user_key'] == str(t1id), 'Identity stored')
     s = requests.Session(); r = oauth(s, 'index.php', 'google', {}); expect(r.url.endswith('dashboard.php') and 'Giáo viên 1' in r.text, 'Teacher logs in with Google')
@@ -152,7 +156,7 @@ try:
     r = oauth(st, 'student/account.php', 'facebook', {}); expect('Đã liên kết Facebook' in flash(r), 'Student links Facebook')
     s = requests.Session(); r = oauth(s, 'student/index.php', 'facebook', {}); expect(r.url.endswith('student/home.php') and 'Học sinh kiểm thử' in r.text, 'Student logs in with Facebook')
     r = post(st, 'oauth.php', {'action': 'unlink', 'provider': 'facebook', 'for': 'student'}, page='student/account.php'); expect('Đã gỡ' in flash(r), 'Student unlinks')
-    r = oauth(requests.Session(), 'student/index.php', 'facebook', {}); expect('chưa liên kết' in flash(r), 'Unlinked Facebook no longer logs in')
+    r = oauth(requests.Session(), 'student/index.php', 'facebook', {}); expect(r.url.endswith('student/register.php') and 'home.php' not in r.url, 'Unlinked Facebook no longer logs in (goes to sign-up)')
     expect(sql1('SELECT COUNT(*) n FROM oauth_identities WHERE user_type="student"')['n'] == 0, 'Unlink removed identity')
 
     # ---- phụ huynh: đăng ký bằng Google + mã mời
@@ -160,7 +164,7 @@ try:
         r = post(t1, 'family.php?class=%d' % cls, {'action': 'invite', 'student_code': d['code'], 'class_id': cls})
         return BeautifulSoup(r.text, 'html.parser').select_one('div.card code').text
     n_parents = sql1('SELECT COUNT(*) n FROM parents')['n']
-    r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': 'abc'}); expect('mã mời' in flash(r), 'Register requires invite format')
+    r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': 'abc'}); expect('Mã mời không đúng' in flash(r), 'Register requires invite format')
     tok = invite(); NEXT['google'] = g('g-parent-1', 'ph@example.com', 'Phụ huynh Google')
     par = requests.Session(); r = oauth(par, 'parent/index.php?tab=register', 'google', {'invite': tok})
     expect(r.url.endswith('parent/home.php') and 'Học sinh kiểm thử' in r.text, 'Parent registers with Google + invite')
@@ -171,10 +175,54 @@ try:
     expect('Gỡ liên kết' in par.get(BASE + 'parent/home.php').text, 'Parent manages linked account')
     tok2 = invite(); r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': tok2})
     expect(sql1('SELECT COUNT(*) n FROM parents')['n'] == n_parents + 1 and r.url.endswith('parent/home.php'), 'Existing Google parent reuses account')
-    s = requests.Session(); r = s.post(BASE + 'oauth.php', data={'csrf': csrf(s, 'index.php'), 'action': 'start', 'provider': 'google', 'for': 'teacher', 'mode': 'register'})
-    expect('không hợp lệ' in flash(r) and r.url.endswith('index.php'), 'Teacher register mode not allowed')
+
+    # ---- đăng ký nhanh bằng Google (không liên kết trước)
+    # Giáo viên, chế độ cần mã mời: Google → bước cuối nhập mã mời → vào thẳng, không cần mật khẩu
+    code = sql1('SELECT v FROM settings WHERE k="teacher_invite_code"')
+    if not code: post(t1, 'teachers.php', {'action': 'new_invite'}); code = sql1('SELECT v FROM settings WHERE k="teacher_invite_code"')
+    NEXT['google'] = g('g-new-teacher', 'co.lan@example.com', 'Cô Lan')
+    s = requests.Session(); r = oauth(s, 'register.php', 'google', {})
+    soup = BeautifulSoup(r.text, 'html.parser')
+    expect(r.url.endswith('register.php') and soup.select_one('input[name=password]') is None and soup.select_one('input[name=full_name]')['value'] == 'Cô Lan', 'Teacher sign-up step prefilled, no password')
+    expect(soup.select_one('input[name=username]')['value'].startswith('co.lan'), 'Username suggested from email')
+    r = post(s, 'register.php', {'invite': code['v'], 'full_name': 'Cô Lan', 'username': soup.select_one('input[name=username]')['value']})
+    expect(r.url.endswith('dashboard.php') and 'Đăng nhập với Google' in flash(r), 'Teacher account created via Google')
+    r = oauth(requests.Session(), 'index.php', 'google', {}); expect(r.url.endswith('dashboard.php'), 'New teacher logs in with Google')
+    NEXT['google'] = g('g-wrong-invite', 'x@example.com', 'X'); s = requests.Session(); oauth(s, 'index.php', 'google', {})
+    r = post(s, 'register.php', {'invite': 'GV-SAI0-SAI0', 'full_name': 'X', 'username': 'xxguess'}); expect('Mã mời' in r.text and 'dashboard' not in r.url, 'Invite still required')
+    # Chế độ đăng ký tự do: bấm Google là có tài khoản
+    sql('REPLACE INTO settings (k, v) VALUES ("teacher_signup","open")')
+    NEXT['google'] = g('g-open-teacher', 'thay.minh@example.com', 'Thầy Minh'); r = oauth(requests.Session(), 'index.php', 'google', {})
+    expect(r.url.endswith('dashboard.php') and sql1('SELECT COUNT(*) n FROM teachers WHERE full_name="Thầy Minh"')['n'] == 1, 'Open signup: Google creates account directly')
+    sql('REPLACE INTO settings (k, v) VALUES ("teacher_signup",%s)', (saved.get('teacher_signup', 'invite'),))
+    # Đã có tài khoản: bấm Google → đăng nhập mật khẩu → ARS hỏi rồi mới liên kết
+    NEXT['google'] = g('g-teacher-2', 'gv2@example.com', 'GV 2'); s = requests.Session(); oauth(s, 'index.php', 'google', {})
+    r = post(s, 'index.php', {'username': f'{p}_2', 'password': d['password']})
+    expect('Liên kết Google gv2@example.com với tài khoản này?' in r.text, 'Password login asks before linking pending Google')
+    expect(sql1('SELECT COUNT(*) n FROM oauth_identities WHERE subject="g-teacher-2"')['n'] == 0, 'Not linked without confirmation')
+    r = post(s, 'oauth.php', {'action': 'confirm_link', 'provider': 'google', 'for': 'teacher'}, page='dashboard.php')
+    expect(sql1('SELECT user_key FROM oauth_identities WHERE subject="g-teacher-2"')['user_key'] == str(t2id) and 'Đã liên kết Google' in flash(r), 'Confirmed link')
+    NEXT['google'] = g('g-skip', 'skip@example.com', 'Skip'); s = requests.Session(); oauth(s, 'index.php', 'google', {})
+    post(s, 'index.php', {'username': f'{p}_3', 'password': d['password']}); post(s, 'oauth.php', {'action': 'skip_link', 'provider': 'google', 'for': 'teacher'}, page='dashboard.php')
+    expect(sql1('SELECT COUNT(*) n FROM oauth_identities WHERE subject="g-skip"')['n'] == 0 and 'với tài khoản này?' not in s.get(BASE + 'dashboard.php').text, 'Skip does not link')
+    # Học sinh mới: Google → mã lớp + mã học sinh → vào thẳng; mã đã có mật khẩu thì không chiếm được
+    join = sql1('SELECT join_code FROM classes WHERE id=%s', (cls,))['join_code']
+    NEXT['google'] = g('g-student-new', 'hs.moi@example.com', 'Học Sinh Mới'); s = requests.Session(); r = oauth(s, 'student/index.php', 'google', {})
+    expect(r.url.endswith('student/register.php') and 'input name="p1"' not in r.text, 'Student sign-up step without password')
+    r = post(s, 'student/register.php', {'code': p[-6:] + 'G1', 'name': 'Học Sinh Mới', 'join': join})
+    expect(r.url.endswith('student/home.php') and 'Học Sinh Mới' in r.text, 'Student created via Google with class code')
+    r = oauth(requests.Session(), 'student/index.php', 'google', {}); expect(r.url.endswith('student/home.php'), 'New student logs in with Google')
+    NEXT['google'] = g('g-intruder', 'ke.gia@example.com', 'Kẻ giả'); s = requests.Session(); oauth(s, 'student/index.php', 'google', {})
+    r = post(s, 'student/register.php', {'code': p[-6:] + 'G1', 'name': 'Kẻ giả', 'join': join})
+    expect('đã có tài khoản' in r.text and 'home.php' not in r.url, 'Another Google cannot take over an existing student code')
+    # Phụ huynh: Google → chỉ cần mã mời
+    NEXT['google'] = g('g-parent-new', 'ph.moi@example.com', 'Phụ Huynh Mới'); s = requests.Session(); r = oauth(s, 'parent/index.php', 'google', {})
+    soup = BeautifulSoup(r.text, 'html.parser')
+    expect('tab=register' in r.url and soup.select_one('input[name=password]') is None and 'Đang tạo tài khoản bằng Google' in r.text, 'Parent sign-up step asks only invite')
+    r = post(s, 'parent/index.php?tab=register', {'action': 'register', 'invite': invite(), 'full_name': 'Phụ Huynh Mới'})
+    expect(r.url.endswith('parent/home.php') and 'Học sinh kiểm thử' in r.text, 'Parent created via Google + invite')
 finally:
-    for k in ['oauth_google_id', 'oauth_google_secret', 'oauth_facebook_id', 'oauth_facebook_secret']:
+    for k in ['oauth_google_id', 'oauth_google_secret', 'oauth_facebook_id', 'oauth_facebook_secret', 'teacher_signup']:
         if k in saved: sql('REPLACE INTO settings (k, v) VALUES (%s,%s)', (k, saved[k]))
         else: sql('DELETE FROM settings WHERE k=%s', (k,))
     stub.shutdown()

@@ -193,6 +193,7 @@ function student_head(string $title, string $active = ''): void {
     echo '<main>';
     foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h($m) . '</div>';
     unset($_SESSION['flash']);
+    if ($s && empty($s['must_change'])) echo oauth_pending_prompt('student', '../');
 }
 function student_foot(): void { echo '</main></body></html>'; }
 

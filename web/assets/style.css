@@ -616,3 +616,9 @@ main:has(> .auth), body.parent-portal main:has(> .auth) { max-width: none; margi
 /* Thẻ đăng nhập và các dòng giới thiệu: chỉ trượt nhẹ, không mờ — luôn nhìn thấy kể cả khi trình duyệt chưa chạy hiệu ứng */
 @keyframes auth-slide { from { transform: translateY(8px); } }
 .auth-card, .auth-points li { animation-name: auth-slide; }
+/* đăng ký nhanh bằng Google / Facebook */
+.oauth-pending { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 14px; border-radius: 12px; background: #f0f6ff; border: 1px solid #cfe0fb; }
+.oauth-pending .oauth-logo { width: 26px; height: 26px; color: #1877f2; }
+.oauth-pending > div { flex: 1; }
+.oauth-pending form { margin: 0; }
+.oauth-confirm button { margin-left: 6px; }

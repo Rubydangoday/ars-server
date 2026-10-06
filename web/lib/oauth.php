@@ -148,3 +148,39 @@ function oauth_manage_html(string $for, string $key, string $root = ''): string 
     }
     return $html . '<p class="muted small">Sau khi liên kết, bấm nút Google / Facebook ở màn hình đăng nhập để vào thẳng. Mật khẩu ARS vẫn dùng được.</p></div>';
 }
+
+// ------------------------------------------------------------------ đăng ký nhanh: tài khoản Google/Facebook "đang chờ"
+// Bấm "Đăng nhập với Google" mà chưa có tài khoản ARS → lưu hồ sơ vào phiên (15 phút) và chuyển tới bước cuối của vai trò:
+// giáo viên (mã mời nếu server yêu cầu), học sinh (mã lớp / mã học sinh), phụ huynh (mã mời của con). Không cần mật khẩu.
+// Nếu người đó đã có tài khoản và đăng nhập bằng mật khẩu, ARS hỏi xác nhận trước khi liên kết (an toàn cho máy dùng chung).
+const OAUTH_PENDING_TTL = 900;
+function oauth_pending_set(string $for, string $provider, array $prof): void {
+    $_SESSION['oauth_pending'] = ['for' => $for, 'provider' => $provider, 'at' => time()] + $prof;
+}
+function oauth_pending(string $for): ?array {
+    $p = $_SESSION['oauth_pending'] ?? null;
+    return $p && $p['for'] === $for && time() - $p['at'] <= OAUTH_PENDING_TTL ? $p : null;
+}
+function oauth_pending_clear(): void { unset($_SESSION['oauth_pending']); }
+/** Gắn tài khoản đang chờ vào tài khoản ARS vừa tạo / vừa xác nhận. Trả về tên nhà cung cấp hoặc NULL. */
+function oauth_attach_pending(string $for, string $key): ?string {
+    $p = oauth_pending($for);
+    if (!$p) return null;
+    oauth_link($p['provider'], $p, $for, $key);
+    q('UPDATE oauth_identities SET last_login_at=NOW() WHERE provider=? AND subject=? AND user_type=?', [$p['provider'], $p['subject'], $for]);
+    oauth_pending_clear();
+    return OAUTH_PROVIDERS[$p['provider']];
+}
+/** Gợi ý tên đăng nhập từ email (phần trước @), chỉ chữ không dấu / số / chấm / gạch dưới, chưa ai dùng. */
+function oauth_username_suggest(?string $email, string $table): string {
+    $base = strtolower(preg_replace('/[^A-Za-z0-9_.]/', '', explode('@', (string)$email)[0])) ?: 'user';
+    $base = substr(str_pad($base, 3, '0'), 0, 40);
+    for ($i = 0, $u = $base; $i < 50 && qv("SELECT 1 FROM $table WHERE username=?", [$u]); $i++) $u = $base . random_int(10, 9999);
+    return $u;
+}
+/** Dải thông báo "Đang tạo tài khoản bằng Google: email · Huỷ" trên trang đăng ký. */
+function oauth_pending_banner(array $p, string $root): string {
+    return '<div class="oauth-pending">' . oauth_logo($p['provider']) . '<div><b>Đang tạo tài khoản bằng ' . OAUTH_PROVIDERS[$p['provider']] . '</b><br><span class="small">'
+         . h($p['email'] ?? $p['name'] ?? '') . ' · không cần mật khẩu</span></div><form method="post" action="' . h($root) . 'oauth.php">' . csrf_field()
+         . '<input type="hidden" name="action" value="cancel"><input type="hidden" name="provider" value="' . h($p['provider']) . '"><input type="hidden" name="for" value="' . h($p['for']) . '"><button class="small">Huỷ</button></form></div>';
+}

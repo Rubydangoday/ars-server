@@ -63,16 +63,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('Đã gỡ liên kết ' . OAUTH_PROVIDERS[$p] . '.');
         redirect(OAUTH_ACCOUNT[$for]);
     }
+    if ($act === 'cancel') { oauth_pending_clear(); redirect(OAUTH_LOGIN[$for]); }
+    if ($act === 'confirm_link' || $act === 'skip_link') {
+        // Sau khi đăng nhập bằng mật khẩu: người dùng xác nhận gắn tài khoản Google/Facebook vừa bấm vào tài khoản này.
+        $key = current_key($for);
+        if ($key === null) redirect(OAUTH_LOGIN[$for]);
+        if ($act === 'confirm_link') {
+            try { if ($n = oauth_attach_pending($for, $key)) flash('Đã liên kết ' . $n . '. Lần sau bấm “Đăng nhập với ' . $n . '” để vào thẳng.'); }
+            catch (Throwable $e) { oauth_pending_clear(); flash($e->getMessage(), 'err'); }
+        } else oauth_pending_clear();
+        redirect(OAUTH_HOME[$for]);
+    }
     $mode = $_POST['mode'] ?? '';
     $back = $mode === 'link' ? OAUTH_ACCOUNT[$for] : OAUTH_LOGIN[$for];
     try {
-        if (!in_array($mode, ['login', 'link', 'register'], true) || ($mode === 'register' && $for !== 'parent')) throw new RuntimeException('Yêu cầu không hợp lệ.');
+        if (!in_array($mode, ['login', 'link', 'register'], true)) throw new RuntimeException('Yêu cầu không hợp lệ.');
         $extra = [];
         if ($mode === 'link') {
             if (($extra['key'] = current_key($for)) === null) redirect(OAUTH_LOGIN[$for]);
-        } elseif ($mode === 'register') {
-            $tok = trim((string)($_POST['invite'] ?? ''));
-            if (!preg_match('/^[a-f0-9]{32}$/', $tok)) throw new RuntimeException('Nhập mã mời giáo viên cấp trước khi đăng ký.');
+        } elseif ($mode === 'register' && $for === 'parent' && trim((string)($_POST['invite'] ?? '')) !== '') {
+            // Phụ huynh đã nhập sẵn mã mời: tạo tài khoản ngay khi Google/Facebook gọi lại
+            $tok = trim((string)$_POST['invite']);
+            if (!preg_match('/^[a-f0-9]{32}$/', $tok)) throw new RuntimeException('Mã mời không đúng (32 ký tự thầy cô gửi).');
             $extra['invite'] = $tok;
         }
         redirect(oauth_start($p, $for, $mode, $extra));
@@ -96,7 +108,7 @@ if ($flow['mode'] === 'link') {
 }
 
 $o = oauth_identity($p, $prof['subject'], $for);
-if ($flow['mode'] === 'register') {
+if ($flow['mode'] === 'register' && !empty($flow['invite'])) {
     // Phụ huynh đăng ký bằng Google/Facebook + mã mời. Đã có tài khoản liên kết → chỉ thêm con/lớp.
     try {
         db()->beginTransaction();
@@ -124,5 +136,23 @@ if ($o) {
     login_as($for, $o['user_key']);
     q('DELETE FROM oauth_identities WHERE provider=? AND subject=? AND user_type=?', [$p, $prof['subject'], $for]);   // tài khoản ARS đã bị xoá
 }
-fail('Tài khoản ' . $name . ($prof['email'] ? ' ' . $prof['email'] : '') . ' chưa liên kết với ARS. Đăng nhập bằng mật khẩu, rồi vào Tài khoản → “Liên kết ' . $name . '”'
-     . ($for === 'parent' ? ', hoặc đăng ký mới bằng mã mời giáo viên cấp.' : '.'), OAUTH_LOGIN[$for]);
+// Chưa có tài khoản ARS: giữ hồ sơ Google/Facebook trong phiên và chuyển tới bước cuối của vai trò (không cần mật khẩu).
+oauth_pending_set($for, $p, $prof);
+$who = $prof['email'] ?: ($prof['name'] ?: $name);
+if ($for === 'teacher' && setting('teacher_signup', 'invite') === 'closed') {
+    flash("Server đang đóng đăng ký giáo viên mới. Nếu bạn đã có tài khoản, đăng nhập bằng mật khẩu một lần — ARS sẽ hỏi để liên kết $who.", 'warn');
+    redirect('index.php');
+}
+if ($for === 'teacher' && setting('teacher_signup', 'invite') === 'open' && (int)qv('SELECT COUNT(*) FROM teachers') > 0) {
+    // Server cho đăng ký tự do: tạo tài khoản giáo viên ngay từ hồ sơ Google/Facebook (tên đăng nhập gợi ý từ email, mật khẩu ngẫu nhiên).
+    q('INSERT INTO teachers (username, full_name, password_hash) VALUES (?,?,?)',
+      [oauth_username_suggest($prof['email'] ?? $prof['name'], 'teachers'), $prof['name'] ?: 'Giáo viên', password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT)]);
+    $tid = (string)db()->lastInsertId();
+    oauth_attach_pending('teacher', $tid);
+    flash("Đã tạo tài khoản giáo viên bằng $name. Chào mừng bạn!");
+    login_as('teacher', $tid);
+}
+flash(['teacher' => "Bước cuối để tạo tài khoản giáo viên bằng $name ($who). Đã có tài khoản? Đăng nhập bằng mật khẩu một lần để liên kết.",
+       'student' => "Bước cuối: nhập mã học sinh (và mã lớp nếu có) để tạo tài khoản bằng $name ($who).",
+       'parent' => "Bước cuối: nhập mã mời thầy cô gửi để tạo tài khoản bằng $name ($who)."][$for]);
+redirect(['teacher' => 'register.php', 'student' => 'student/register.php', 'parent' => 'parent/index.php?tab=register'][$for]);
