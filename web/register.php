@@ -46,25 +46,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mode !== 'closed') {
 auth_open('teacher', 'Tạo tài khoản giáo viên', 'Mỗi giáo viên có lớp, câu hỏi và bài giảng riêng.');
 ?>
   <?php if ($mode === 'closed'): ?>
-    <div class="flash warn">Server đang tạm đóng đăng ký giáo viên. Liên hệ giáo viên quản trị để được tạo tài khoản.</div>
+    <div class="flash warn"><?= te('Server đang tạm đóng đăng ký giáo viên. Liên hệ giáo viên quản trị để được tạo tài khoản.') ?></div>
   <?php else: ?>
     <?php if ($err): ?><div class="flash err"><?= h($err) ?></div><?php endif; ?>
     <?php if ($pending): ?><?= oauth_pending_banner($pending, '') ?>
-    <?php else: ?><?= oauth_buttons('teacher', 'register', '', 'Đăng ký với', [], true) ?><?= auth_divider('hoặc tạo tài khoản bằng mật khẩu') ?><?php endif; ?>
-    <?php if ($mode === 'invite'): ?><p class="muted small">Cần <b>mã mời giáo viên</b> do quản trị viên server cấp.</p><?php endif; ?>
+    <?php else: ?><?= oauth_buttons('teacher', 'register', '', t('Đăng ký với'), [], true) ?><?= auth_divider(t('hoặc tạo tài khoản bằng mật khẩu')) ?><?php endif; ?>
+    <?php if ($mode === 'invite'): ?><p class="muted small"><?= te('Cần') ?> <b><?= te('mã mời giáo viên') ?></b> <?= te('do quản trị viên server cấp.') ?></p><?php endif; ?>
     <form method="post" class="stack" autocomplete="off">
       <?= csrf_field() ?>
       <?php if ($mode === 'invite'): ?>
-        <label>Mã mời giáo viên <input name="invite" required value="<?= h($_POST['invite'] ?? ($_GET['code'] ?? '')) ?>" placeholder="VD: GV-7K3P-Q9XA" style="text-transform:uppercase"></label>
+        <label><?= te('Mã mời giáo viên') ?> <input name="invite" required value="<?= h($_POST['invite'] ?? ($_GET['code'] ?? '')) ?>" placeholder="VD: GV-7K3P-Q9XA" style="text-transform:uppercase"></label>
       <?php endif; ?>
-      <label>Họ tên <input name="full_name" required value="<?= h($_POST['full_name'] ?? ($pending['name'] ?? '')) ?>"></label>
-      <label>Tên đăng nhập <input name="username" required value="<?= h($_POST['username'] ?? ($pending ? oauth_username_suggest($pending['email'] ?? $pending['name'], 'teachers') : '')) ?>" placeholder="vd: nguyenvana"></label>
+      <label><?= te('Họ tên') ?> <input name="full_name" required value="<?= h($_POST['full_name'] ?? ($pending['name'] ?? '')) ?>"></label>
+      <label><?= te('Tên đăng nhập') ?> <input name="username" required value="<?= h($_POST['username'] ?? ($pending ? oauth_username_suggest($pending['email'] ?? $pending['name'], 'teachers') : '')) ?>" placeholder="<?= te('vd: nguyenvana') ?>"></label>
       <?php if (!$pending): ?>
-      <label>Mật khẩu <input name="password" type="password" required minlength="6"></label>
-      <label>Nhập lại mật khẩu <input name="password2" type="password" required minlength="6"></label>
+      <label><?= te('Mật khẩu') ?> <input name="password" type="password" required minlength="6"></label>
+      <label><?= te('Nhập lại mật khẩu') ?> <input name="password2" type="password" required minlength="6"></label>
       <?php endif; ?>
-      <button class="primary">Tạo tài khoản</button>
+      <button class="primary"><?= te('Tạo tài khoản') ?></button>
     </form>
   <?php endif; ?>
-  <p class="small" style="margin-top:12px"><a href="index.php">← Đã có tài khoản? Đăng nhập</a></p>
+  <p class="small" style="margin-top:12px"><a href="index.php"><?= te('← Đã có tài khoản? Đăng nhập') ?></a></p>
 <?php auth_close();

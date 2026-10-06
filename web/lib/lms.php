@@ -40,9 +40,7 @@ function parent_child(int $class,string $code): array {
     $r=q1('SELECT s.*, c.name AS class_name FROM parent_links l JOIN students s ON s.class_id=l.class_id AND s.student_code=l.student_code JOIN classes c ON c.id=s.class_id WHERE l.parent_id=? AND l.class_id=? AND l.student_code=?',[parent_me()['id'],$class,$code]);
     if(!$r){http_response_code(404);exit('Không tìm thấy học sinh.');}return $r;
 }
-function parent_head(string $title): void {
-    page_head($title,'',true);echo '<nav><a href="home.php">Tiến độ của con</a> · <a href="index.php?logout=1">Đăng xuất</a></nav>';
-}
+function parent_head(string $title): void { page_head($title); }   // thanh trên phụ huynh vẽ trong page_head (lib/bootstrap.php)
 function serve_lms_file(array $r): void {
     $store=$r['store']??$r['file_store'];
     if(!preg_match('/^[a-f0-9]{40}\.[a-z0-9]+$/',$store??'')){http_response_code(404);exit;}
@@ -77,8 +75,8 @@ function all_wrong_sources(string $code,?int $class=null): array {
 /** Aggregate released classroom scores and attendance by day/week for parent progress. */
 function parent_progress(array $sessions,string $period): string {
  $groups=[];foreach($sessions as $r){$d=new DateTimeImmutable($r['started_at']);if($period==='week')$d=$d->modify('monday this week');$key=$d->format('Y-m-d');$groups[$key]??=['present'=>0,'total'=>0,'scores'=>[]];$groups[$key]['total']++;$groups[$key]['present']+=(int)(bool)$r['present'];if($r['present']&&$r['n'])$groups[$key]['scores'][]=10*$r['ok']/$r['n'];}
- ksort($groups);$groups=array_slice($groups,-12,null,true);$html='<table class="grid"><tr><th>'.($period==='week'?'Tuần bắt đầu':'Ngày').'</th><th>Chuyên cần</th><th>Điểm trung bình / 10</th></tr>';$points=[];$i=0;$n=count($groups);
- foreach($groups as $day=>$v){$score=$v['scores']?array_sum($v['scores'])/count($v['scores']):null;$html.='<tr><td>'.h($day).'</td><td>'.$v['present'].'/'.$v['total'].' buổi</td><td>'.($score===null?'—':round($score,1)).'</td></tr>';if($score!==null){$x=$n>1?35+$i*530/($n-1):300;$y=180-15*$score;$points[]=$x.','.$y;}$i++;}$html.='</table>';
- if($points){$svg='<svg viewBox="0 0 600 210" role="img" aria-label="Tiến độ điểm trung bình trên lớp theo '.($period==='week'?'tuần':'ngày').'" style="width:100%;max-width:700px"><line x1="35" y1="30" x2="35" y2="180" stroke="#888"/><line x1="35" y1="180" x2="565" y2="180" stroke="#888"/><text x="5" y="35">10</text><text x="15" y="180">0</text><polyline class="fx-line" pathLength="1" points="'.h(implode(' ',$points)).'" fill="none" stroke="#267cb0" stroke-width="3" stroke-linejoin="round"/>';foreach($points as $j=>$point){[$x,$y]=explode(',',$point);$svg.='<circle class="fx-dot" style="animation-delay:'.round(.15+1.1*($j+1)/count($points),2).'s" cx="'.$x.'" cy="'.$y.'" r="4" fill="#267cb0"/>';}$svg.='<text x="35" y="205">'.h(array_key_first($groups)).'</text><text x="565" y="205" text-anchor="end">'.h(array_key_last($groups)).'</text></svg>';$html=$svg.$html;}
+ ksort($groups);$groups=array_slice($groups,-12,null,true);$html='<table class="grid"><tr><th>'.te($period==='week'?'Tuần bắt đầu':'Ngày').'</th><th>'.te('Chuyên cần').'</th><th>'.te('Điểm trung bình / 10').'</th></tr>';$points=[];$i=0;$n=count($groups);
+ foreach($groups as $day=>$v){$score=$v['scores']?array_sum($v['scores'])/count($v['scores']):null;$html.='<tr><td>'.h($day).'</td><td>'.te('{a}/{b} buổi',['a'=>$v['present'],'b'=>$v['total']]).'</td><td>'.($score===null?'—':round($score,1)).'</td></tr>';if($score!==null){$x=$n>1?35+$i*530/($n-1):300;$y=180-15*$score;$points[]=$x.','.$y;}$i++;}$html.='</table>';
+ if($points){$svg='<svg viewBox="0 0 600 210" role="img" aria-label="'.te($period==='week'?'Tiến độ điểm trung bình theo tuần':'Tiến độ điểm trung bình theo ngày').'" style="width:100%;max-width:700px"><line x1="35" y1="30" x2="35" y2="180" stroke="#888"/><line x1="35" y1="180" x2="565" y2="180" stroke="#888"/><text x="5" y="35">10</text><text x="15" y="180">0</text><polyline class="fx-line" pathLength="1" points="'.h(implode(' ',$points)).'" fill="none" stroke="#267cb0" stroke-width="3" stroke-linejoin="round"/>';foreach($points as $j=>$point){[$x,$y]=explode(',',$point);$svg.='<circle class="fx-dot" style="animation-delay:'.round(.15+1.1*($j+1)/count($points),2).'s" cx="'.$x.'" cy="'.$y.'" r="4" fill="#267cb0"/>';}$svg.='<text x="35" y="205">'.h(array_key_first($groups)).'</text><text x="565" y="205" text-anchor="end">'.h(array_key_last($groups)).'</text></svg>';$html=$svg.$html;}
  return $html;
 }

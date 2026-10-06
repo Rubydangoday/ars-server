@@ -52,7 +52,8 @@ ars-server/
 ├── common/
 │   └── arscfg.py                 Dùng chung cho Python: đọc config.ini, kết nối DB, mã hoá bitmap ghế / mặt nạ câu
 ├── tools/
-│   └── sim_clickers.py           Giả lập gateway + N Remote ở tầng MQTT (chạy thử không cần phần cứng, thử tải)
+│   ├── sim_clickers.py           Giả lập gateway + N Remote ở tầng MQTT (chạy thử không cần phần cứng, thử tải)
+│   └── i18n_wrap.py              Công cụ dịch: bọc chuỗi tiếng Việt bằng t()/te(), liệt kê khoá dịch
 │
 ├── db/
 │   ├── schema.sql                Bảng lõi: teachers, classes, students, devices, question_sets, questions, sessions,
@@ -63,7 +64,8 @@ ars-server/
 │   ├── migrate_005_lms.sql       Trường, kho đề, media câu hỏi, ghép Remote ↔ học sinh, bài tập về nhà, phụ huynh
 │   ├── migrate_006_*.sql         Admin trường/lớp hành chính, đồng bộ Cloud, thi đua đổi quà, thông báo Zalo/SMS
 │   ├── migrate_007_oauth.sql     Đăng nhập Google / Facebook
-│   └── migrate_008_*.sql         Học sinh tự đăng ký chưa cần lớp
+│   ├── migrate_008_*.sql         Học sinh tự đăng ký chưa cần lớp
+│   └── migrate_009_language.sql  Ngôn ngữ giao diện theo tài khoản (vi / en)
 │
 ├── deploy/                       Cài đặt & vận hành trên Ubuntu
 │   ├── install_ubuntu.sh         Cài một lệnh: Apache+PHP, MariaDB, Mosquitto, Python libs, chép code vào /opt/ars-server
@@ -106,7 +108,9 @@ ars-server/
 │   ├── student/                  Cổng học sinh: home, homework, wrong/right (câu sai/đúng), practice/quiz/review,
 │   │                             lectures/lecture, lessons (rút kinh nghiệm), tutor + api_tutor (AI), rewards, register…
 │   ├── parent/                   Cổng phụ huynh: index (đăng nhập/đăng ký bằng mã mời), home (tiến độ của con)
+│   ├── lang/en.php               Từ điển tiếng Anh (khoá = câu tiếng Việt trong mã)
 │   ├── lib/                      Thư viện PHP (bị chặn truy cập trực tiếp):
+│   │   ├── i18n.php              Đa ngôn ngữ: t()/te(), chọn ngôn ngữ (?lang=en|vi, cookie, theo tài khoản)
 │   │   ├── bootstrap.php         Cấu hình, PDO, phiên, CSRF, quyền sở hữu lớp/buổi, giao diện chung, bump_state()
 │   │   ├── student.php · lms.php Dùng chung cổng HS; bài tập về nhà, tệp, phụ huynh
 │   │   ├── stats.php · sheet.php Thống kê buổi học; đọc/ghi .xlsx/.csv không cần thư viện
@@ -268,7 +272,7 @@ sudo systemctl restart apache2 ars-ingest ars-bridge
 ```
 Có migration mới (`db/migrate_00X_*.sql`) thì chạy trước: `mysql -u root -p ars < db/migrate_00X_….sql`.
 
-**Windows / chạy tay:** XAMPP (Apache + MariaDB) + Mosquitto + Python 3.10 (`pip install paho-mqtt pymysql pyserial`); tạo CSDL bằng `schema.sql` rồi lần lượt `migrate_002` → `008`; chép `config.ini.example` → `config.ini`; mỗi buổi chạy `python ingest/ingest.py` và `python bridge/bridge.py`. Chi tiết: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
+**Windows / chạy tay:** XAMPP (Apache + MariaDB) + Mosquitto + Python 3.10 (`pip install paho-mqtt pymysql pyserial`); tạo CSDL bằng `schema.sql` rồi lần lượt `migrate_002` → `009`; chép `config.ini.example` → `config.ini`; mỗi buổi chạy `python ingest/ingest.py` và `python bridge/bridge.py`. Chi tiết: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
 
 **Không có phần cứng:**
 ```bash
@@ -277,3 +281,11 @@ ars sim 30            # hoặc: python3 tools/sim_clickers.py --room 1 -n 30 [--
 Mở bảng điều khiển, bấm **Mở câu** — các ô chuyển xanh dần; cuối chạy bộ giả lập in tỉ lệ xác nhận và độ trễ bấm OK → đèn xanh.
 
 **Test:** `bash tests/run_local.sh` (CSDL tạm, không đụng dữ liệu thật).
+
+---
+
+## 6. Ngôn ngữ giao diện (Tiếng Việt / English)
+
+- Giáo viên và phụ huynh chọn **🇻🇳 VI / 🇬🇧 EN** ở thanh trên (hoặc màn đăng nhập). Lựa chọn lưu theo cookie và theo tài khoản (đăng nhập máy khác vẫn giữ). Lần đầu mở, trình duyệt đặt tiếng Anh sẽ thấy tiếng Anh. Cổng học sinh giữ tiếng Việt.
+- Đã dịch: thanh trên, đăng nhập / đăng ký / quên mật khẩu, Tổng quan, Lớp học, trang lớp, bảng điều khiển + màn chiếu (cả JavaScript), Kết quả, cổng phụ huynh, Google/Facebook. Trang chưa dịch hiện tiếng Việt.
+- Thêm bản dịch: bọc chuỗi bằng `t('…')` / `te('…')` (PHP) hoặc `T('…')` (JS, trong control.js / projector.js); biến dạng `{n}`. `python3 tools/i18n_wrap.py keys web` liệt kê mọi khoá → thêm vào `web/lang/en.php`.

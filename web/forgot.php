@@ -33,22 +33,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 auth_open('teacher', 'Đặt lại mật khẩu', 'Dành cho tài khoản giáo viên.');
 ?>
   <?php if ($local): ?>
-    <p class="muted">Bạn đang mở trang này trực tiếp trên máy chủ nên có thể đặt lại mật khẩu mà không cần mã khôi phục.</p>
+    <p class="muted"><?= te('Bạn đang mở trang này trực tiếp trên máy chủ nên có thể đặt lại mật khẩu mà không cần mã khôi phục.') ?></p>
   <?php else: ?>
-    <p class="muted">Nhập mã khôi phục (hiện khi tạo tài khoản, hoặc tạo lại trong Cài đặt → Tài khoản). Không còn mã: mở
-      <code>http://localhost/ars/forgot.php</code> ngay trên laptop chạy server, hoặc chạy lệnh <code>ars reset-gv</code> trên terminal.</p>
+    <p class="muted"><?= te('Nhập mã khôi phục (hiện khi tạo tài khoản, hoặc tạo lại trong Cài đặt → Tài khoản). Không còn mã: mở') ?>
+      <code>http://localhost/ars/forgot.php</code> <?= te('ngay trên laptop chạy server, hoặc chạy lệnh') ?> <code>ars reset-gv</code> <?= te('trên terminal.') ?></p>
   <?php endif; ?>
   <?php if ($err): ?><div class="flash err"><?= h($err) ?></div><?php endif; ?>
   <form method="post" class="stack" autocomplete="off"><?= csrf_field() ?>
     <?php if ($local && $users): ?>
-      <label>Tài khoản <select name="username"><?php foreach ($users as $x): ?><option value="<?= h($x['username']) ?>" <?= ($_POST['username'] ?? '') === $x['username'] ? 'selected' : '' ?>><?= h($x['username']) ?> — <?= h($x['full_name']) ?></option><?php endforeach; ?></select></label>
+      <label><?= te('Tài khoản') ?> <select name="username"><?php foreach ($users as $x): ?><option value="<?= h($x['username']) ?>" <?= ($_POST['username'] ?? '') === $x['username'] ? 'selected' : '' ?>><?= h($x['username']) ?> — <?= h($x['full_name']) ?></option><?php endforeach; ?></select></label>
     <?php else: ?>
-      <label>Tên đăng nhập <input name="username" required value="<?= h($_POST['username'] ?? '') ?>"></label>
-      <label>Mã khôi phục <input name="code" required placeholder="ABCD-EFGH-JKLM" style="text-transform:uppercase;letter-spacing:2px"></label>
+      <label><?= te('Tên đăng nhập') ?> <input name="username" required value="<?= h($_POST['username'] ?? '') ?>"></label>
+      <label><?= te('Mã khôi phục') ?> <input name="code" required placeholder="ABCD-EFGH-JKLM" style="text-transform:uppercase;letter-spacing:2px"></label>
     <?php endif; ?>
-    <label>Mật khẩu mới <input name="p1" type="password" required minlength="6" autocomplete="new-password"></label>
-    <label>Xác nhận mật khẩu mới <input name="p2" type="password" required minlength="6" autocomplete="new-password"></label>
-    <button class="primary">Đặt lại mật khẩu</button>
+    <label><?= te('Mật khẩu mới') ?> <input name="p1" type="password" required minlength="6" autocomplete="new-password"></label>
+    <label><?= te('Xác nhận mật khẩu mới') ?> <input name="p2" type="password" required minlength="6" autocomplete="new-password"></label>
+    <button class="primary"><?= te('Đặt lại mật khẩu') ?></button>
   </form>
-  <p class="small"><a href="index.php">← Quay lại đăng nhập</a></p>
+  <p class="small"><a href="index.php"><?= te('← Quay lại đăng nhập') ?></a></p>
 <?php auth_close();

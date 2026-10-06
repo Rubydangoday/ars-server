@@ -27,6 +27,7 @@ function login_as(string $for, string $key): void {
         session_regenerate_id(true);
         $_SESSION['teacher'] = ['id' => (int)$t['id'], 'username' => $t['username'], 'full_name' => $t['full_name'], 'is_admin' => (int)$t['is_admin'] === 1];
         q('UPDATE teachers SET last_login=NOW() WHERE id=?', [$t['id']]);
+        apply_user_lang($t['lang'] ?? null);
     } elseif ($for === 'student') {
         $u = q1('SELECT * FROM student_users WHERE student_code=?', [$key]);
         $nm = student_display_name($key);
@@ -40,6 +41,7 @@ function login_as(string $for, string $key): void {
         if (!$p) return;
         session_regenerate_id(true);
         $_SESSION['parent'] = ['id' => $p['id'], 'full_name' => $p['full_name']];
+        apply_user_lang($p['lang'] ?? null);
     }
     redirect(OAUTH_HOME[$for]);
 }

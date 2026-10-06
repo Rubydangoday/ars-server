@@ -3,17 +3,18 @@
   const root = document.getElementById('pj');
   const SID = root.dataset.session;
   const $ = (id) => document.getElementById(id);
+  const T = (s, v) => { let r = (window.ARS_I18N || {})[s] || s; if (v) for (const k in v) r = r.split('{' + k + '}').join(v[k]); return r; };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const setHTML = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; delete el.dataset.mathDone; } };
   let deadlineAt = null, sound=false, audioContext=null, lastBeep='', lastQuestion=null, revealed='', primed=false;
   $('pj-full').onclick=()=>document.documentElement.requestFullscreen?.();
-  $('pj-sound').onclick=()=>{sound=!sound;$('pj-sound').textContent=sound?'Tắt âm đếm ngược':'Bật âm đếm ngược';$('pj-sound').setAttribute('aria-pressed',String(sound));if(sound)audioContext??=new (window.AudioContext||window.webkitAudioContext)();};
+  $('pj-sound').onclick=()=>{sound=!sound;$('pj-sound').textContent=sound?T('Tắt âm đếm ngược'):T('Bật âm đếm ngược');$('pj-sound').setAttribute('aria-pressed',String(sound));if(sound)audioContext??=new (window.AudioContext||window.webkitAudioContext)();};
 
   function render(s) {
     const c = s.current;
     $('pj-wait').hidden = !!c; $('pj-q').hidden = !c;
     if (!c) { $('pj-no').textContent = ''; deadlineAt = null; return; }
-    $('pj-no').textContent = `Câu ${c.position}/${s.n_questions}`;
+    $('pj-no').textContent = T('Câu {n}/{all}', { n: c.position, all: s.n_questions });
     setHTML($('pj-text'), esc(c.content).replace(/\n/g, '<br>'));
     setHTML($('pj-media'),(c.media||[]).map(m=>{const url='question_file.php?id='+Number(m.id);return m.kind==='image'?`<img src="${url}" alt="${esc(m.name)}" style="max-width:100%;max-height:35vh">`:`<${m.kind} controls preload="metadata" src="${url}" style="max-width:100%;max-height:35vh"></${m.kind}>`;}).join(''));
     window.ARSRenderMath?.($('pj-q'));lastQuestion=c.id;
@@ -36,7 +37,7 @@
     $('pj-count').textContent = c.n_answered;
     $('pj-logged').textContent = s.n_logged;
     $('pj-fill').style.width = (s.n_logged ? Math.min(100, c.n_answered * 100 / s.n_logged) : 0) + '%';
-    $('pj-state').textContent = c.status === 'open' ? 'đang nhận đáp án' : c.status === 'closed' ? 'đã đóng' : 'chưa mở';
+    $('pj-state').textContent = c.status === 'open' ? T('đang nhận đáp án') : c.status === 'closed' ? T('đã đóng') : T('chưa mở');
     deadlineAt = c.status === 'open' && c.deadline_left !== null ? performance.now() + c.deadline_left * 1000 : null;
   }
 

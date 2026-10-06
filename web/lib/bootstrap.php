@@ -107,6 +107,21 @@ function check_csrf(): void {
 }
 check_csrf();
 
+require_once __DIR__ . '/i18n.php';
+// ?lang=vi|en trên bất kỳ trang nào: lưu lựa chọn (cookie + tài khoản đang đăng nhập) rồi tải lại trang không kèm tham số.
+if (isset($_GET['lang']) && isset(LANGS[$_GET['lang']]) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    set_lang($_GET['lang']);
+    try {
+        if (!empty($_SESSION['teacher']['id'])) q('UPDATE teachers SET lang=? WHERE id=?', [$_GET['lang'], $_SESSION['teacher']['id']]);
+        if (!empty($_SESSION['parent']['id'])) q('UPDATE parents SET lang=? WHERE id=?', [$_GET['lang'], $_SESSION['parent']['id']]);
+    } catch (Throwable $e) {}                    // chưa chạy migration 009: vẫn lưu theo cookie
+    $qs = $_GET; unset($qs['lang']);
+    header('Location: ' . strtok($_SERVER['REQUEST_URI'] ?? '', '?') . ($qs ? '?' . http_build_query($qs) : ''));
+    exit;
+}
+/** Sau khi đăng nhập: dùng ngôn ngữ đã lưu theo tài khoản (nếu có). */
+function apply_user_lang(?string $l): void { if ($l) set_lang($l); }
+
 function flash(string $msg, string $kind = 'ok'): void { $_SESSION['flash'][] = [$kind, $msg]; }
 /** Hiệu ứng chạy một lần ở trang kế tiếp (assets/fx.js): celebrate | correct | wrong | success. */
 function fx_once(string $name): void { $_SESSION['fx'] = $name; }
@@ -118,9 +133,9 @@ function oauth_pending_prompt(string $for, string $root): string {
     $name = ['google' => 'Google', 'facebook' => 'Facebook'][$p['provider']] ?? '';
     $btn = fn($act, $label, $cls) => '<form method="post" action="' . h($root) . 'oauth.php" style="display:inline">' . csrf_field() . '<input type="hidden" name="action" value="' . $act . '">'
         . '<input type="hidden" name="provider" value="' . h($p['provider']) . '"><input type="hidden" name="for" value="' . $for . '"><button class="' . $cls . '">' . $label . '</button></form>';
-    return '<div class="flash warn oauth-confirm"><b>Liên kết ' . $name . ' ' . h($p['email'] ?? $p['name'] ?? '') . ' với tài khoản này?</b> '
-         . 'Lần sau bấm “Đăng nhập với ' . $name . '” là vào thẳng. Chỉ đồng ý nếu đó là tài khoản ' . $name . ' của chính bạn. '
-         . $btn('confirm_link', 'Liên kết', 'primary small') . ' ' . $btn('skip_link', 'Không', 'small') . '</div>';
+    return '<div class="flash warn oauth-confirm"><b>' . te('Liên kết {p} {e} với tài khoản này?', ['p' => $name, 'e' => $p['email'] ?? $p['name'] ?? '']) . '</b> '
+         . te('Lần sau bấm “Đăng nhập với {p}” là vào thẳng. Chỉ đồng ý nếu đó là tài khoản {p} của chính bạn.', ['p' => $name]) . ' '
+         . $btn('confirm_link', te('Liên kết'), 'primary small') . ' ' . $btn('skip_link', te('Không'), 'small') . '</div>';
 }
 function fx_attr(): string { $f = $_SESSION['fx'] ?? ''; unset($_SESSION['fx']); return $f ? ' data-fx="' . h($f) . '"' : ''; }
 function redirect(string $url): void { header('Location: ' . $url); exit; }
@@ -273,9 +288,9 @@ function next_free_room(): int {
 }
 /** Hai thẻ chọn kiểu kết nối clicker (dùng trong form). */
 function conn_mode_picker(string $cur): string {
-    $o = '<div class="small muted" style="margin-bottom:-4px">Kết nối clicker</div><div class="modes">';
-    $d = ['ble' => ['🔵', 'Bluetooth', 'Clicker nRF52840 gửi qua gateway USB (cắm máy chủ hoặc máy GV).'],
-          'wifi' => ['📶', 'Wi-Fi', 'Clicker ESP32 gửi thẳng lên máy chủ qua Wi-Fi, không cần gateway.']];
+    $o = '<div class="small muted" style="margin-bottom:-4px">' . te('Kết nối clicker') . '</div><div class="modes">';
+    $d = ['ble' => ['🔵', 'Bluetooth', t('Clicker nRF52840 gửi qua gateway USB (cắm máy chủ hoặc máy GV).')],
+          'wifi' => ['📶', 'Wi-Fi', t('Clicker ESP32 gửi thẳng lên máy chủ qua Wi-Fi, không cần gateway.')]];
     foreach ($d as $k => [$ico, $name, $desc]) {
         $o .= '<label class="mode"><input type="radio" name="conn_mode" value="' . $k . '"' . ($cur === $k ? ' checked' : '') . '>'
             . '<b><span class="ico">' . $ico . '</span>' . $name . '</b><span class="small muted">' . $desc . '</span></label>';
@@ -301,49 +316,83 @@ function class_join_code(int $class_id, bool $renew = false): string {
     q('UPDATE classes SET join_code=? WHERE id=?', [$c, $class_id]);
     return $c;
 }
-function lesson_label(array $l): string { return 'Buổi ' . (int)$l['no'] . ($l['title'] !== '' ? ' · ' . $l['title'] : ''); }
+function lesson_label(array $l): string { return t('Buổi {n}', ['n' => (int)$l['no']]) . ($l['title'] !== '' ? ' · ' . $l['title'] : ''); }
 
 // ---------------------------------------------------------------- giao diện
+// Thanh trên kiểu Socrative: 5 tab chính + menu "Thêm"; nhãn tiếng Việt là khoá dịch (lib/i18n.php).
 const NAV = [
     'dashboard.php' => ['Tổng quan', ['dashboard.php']],
-    'classes.php'   => ['Lớp học', ['classes.php', 'class.php']],
-    'lessons.php'   => ['Buổi học', ['lessons.php', 'lesson.php']],
-    'compose.php'   => ['Câu hỏi', ['compose.php', 'sets.php', 'set.php']],
-    'sessions.php'  => ['Lịch sử', ['sessions.php', 'session.php', 'results.php']],
-    'homework.php' => ['Bài tập', ['homework.php','homework_grade.php']],
-    'library.php' => ['Kho đề', ['library.php','variants.php']],
-    'analytics.php' => ['Báo cáo', ['analytics.php']],
-    'rewards.php' => ['Thi đua', ['rewards.php']],
-    'family.php' => ['Phụ huynh', ['family.php']],
-    'devices.php'   => ['Thiết bị', ['devices.php']],
-    'sync.php'      => ['Cloud', ['sync.php', 'notify.php']],
+    'classes.php'   => ['Lớp học', ['classes.php', 'class.php', 'session.php', 'projector.php', 'gateway.php']],
+    'compose.php'   => ['Câu hỏi', ['compose.php', 'sets.php', 'set.php', 'media.php']],
+    'homework.php'  => ['Bài tập', ['homework.php', 'homework_grade.php']],
+    'sessions.php'  => ['Kết quả', ['sessions.php', 'results.php']],
+];
+const NAV_MORE = [
+    'lessons.php'   => ['📚', 'Buổi học', ['lessons.php', 'lesson.php']],
+    'library.php'   => ['🗂', 'Kho đề', ['library.php', 'variants.php']],
+    'analytics.php' => ['📈', 'Báo cáo', ['analytics.php']],
+    'rewards.php'   => ['🏆', 'Thi đua', ['rewards.php']],
+    'family.php'    => ['👪', 'Phụ huynh', ['family.php']],
+    'devices.php'   => ['📡', 'Thiết bị', ['devices.php', 'mapping.php']],
+    'sync.php'      => ['☁️', 'Cloud', ['sync.php', 'notify.php']],
 ];
 function asset_base(): string {return str_contains($_SERVER['SCRIPT_NAME']??'', '/parent/')?'../assets/':'assets/';}
 function math_assets(): string {$a=asset_base();return '<link rel="stylesheet" href="'.$a.'vendor/katex/katex.min.css"><script defer src="'.$a.'vendor/katex/katex.min.js"></script><script defer src="'.$a.'vendor/katex/contrib/auto-render.min.js"></script><script defer src="'.$a.'math.js"></script><script defer src="'.$a.'fx.js"></script>';}
+/** Logo ARS: chữ A + sóng Remote (SVG, không tải ngoài). */
+function ars_logo(): string {
+    return '<svg class="ars-logo" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="currentColor"/><path d="M11 29 18.5 10h3L29 29h-3.6l-1.7-4.6h-7.4L14.6 29zm6.5-7.6h5.2L20 15z" fill="#fff"/>'
+         . '<path d="M30 9.5a7 7 0 0 1 3 4.5M30.6 5.6a11 11 0 0 1 5 7" fill="none" stroke="#ffb15c" stroke-width="2.2" stroke-linecap="round"/></svg>';
+}
+/** Viên trạng thái buổi học đang chạy: lớp · điểm danh · sóng gateway / Wi-Fi. Bấm để về bảng điều khiển. */
+function live_pill(int $teacher_id): string {
+    try {
+        $r = q1('SELECT s.id, c.name, c.room_id, c.conn_mode, (SELECT COUNT(*) FROM session_logins l WHERE l.session_id=s.id) n_in, '
+              . '(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id) n_all, '
+              . '(SELECT g.online AND g.updated_at > NOW() - INTERVAL 15 SECOND FROM gateways g WHERE g.room_id=c.room_id) gw '
+              . 'FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.teacher_id=? AND s.status="running" ORDER BY s.id DESC LIMIT 1', [$teacher_id]);
+    } catch (Throwable $e) { return ''; }
+    if (!$r) return '';
+    $ok = $r['conn_mode'] === 'wifi' || (int)$r['gw'] === 1;
+    return '<a class="live-pill' . ($ok ? '' : ' weak') . '" href="session.php?id=' . (int)$r['id'] . '" title="' . te('Buổi học đang chạy — mở bảng điều khiển') . '">'
+         . '<span class="sig"><i></i><i></i><i></i></span><b>' . h($r['name']) . '</b><span>' . (int)$r['n_in'] . '/' . (int)$r['n_all'] . '</span></a>';
+}
 function page_head(string $title, string $active = '', bool $bare = false): void {
     $t = me();
     $page = $active ?: basename($_SERVER['SCRIPT_NAME'] ?? '');
-    echo '<!doctype html><html lang="vi"><head><meta charset="utf-8">'
+    $parent = str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/parent/');
+    echo '<!doctype html><html lang="' . lang() . '"><head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="csrf" content="' . h(csrf_token()) . '">'
-       . '<title>' . h($title) . ' — ARS</title><link rel="stylesheet" href="'.asset_base().'style.css">'.math_assets().'</head>'
-       . '<body class="' . ($bare ? 'bare' : '').(str_contains($_SERVER['SCRIPT_NAME']??'', '/parent/')?' parent-portal':'') . '"' . fx_attr() . '>';
-    if (!$bare && $t) {
-        echo '<header class="top"><a class="brand" href="dashboard.php"><span class="logo">A</span>ARS<small>' . h(setting('org_name', 'Lớp học tương tác')) . '</small></a><nav>';
-        $nav = NAV;
-        if (!empty($t['school_admin'])) $nav['school.php'] = ['Trường của tôi', ['school.php', 'cohort.php']];
-        if (!empty($t['is_admin'])) { $nav['teachers.php'] = ['Giáo viên', ['teachers.php']]; $nav['schools.php']=['Trường',['schools.php']]; }
-        foreach ($nav as $href => [$label, $pages]) {
-            echo '<a href="' . $href . '"' . (in_array($page, $pages, true) ? ' class="on"' : '') . '>' . $label . '</a>';
+       . '<title>' . h($title) . ' — ARS</title><link rel="stylesheet" href="'.asset_base().'style.css">'.i18n_js().math_assets().'</head>'
+       . '<body class="' . ($bare ? 'bare' : 'app') . ($parent ? ' parent-portal' : '') . '"' . fx_attr() . '>';
+    if (!$bare && $t && !$parent) {
+        echo '<header class="top"><a class="brand" href="dashboard.php">' . ars_logo() . '<span>ARS<small>' . h(setting('org_name', t('Lớp học tương tác'))) . '</small></span></a>'
+           . '<nav class="tabs-main" aria-label="' . te('Điều hướng') . '">';
+        foreach (NAV as $href => [$label, $pages]) echo '<a href="' . $href . '"' . (in_array($page, $pages, true) ? ' class="on" aria-current="page"' : '') . '>' . te($label) . '</a>';
+        $more = NAV_MORE;
+        if (!empty($t['school_admin'])) $more['school.php'] = ['🏫', 'Trường của tôi', ['school.php', 'cohort.php']];
+        if (!empty($t['is_admin'])) { $more['teachers.php'] = ['🧑‍🏫', 'Giáo viên', ['teachers.php']]; $more['schools.php'] = ['🏛', 'Trường', ['schools.php']]; }
+        $in_more = false; $items = '';
+        foreach ($more as $href => [$ico, $label, $pages]) {
+            $on = in_array($page, $pages, true); $in_more = $in_more || $on;
+            $items .= '<a href="' . $href . '"' . ($on ? ' class="on"' : '') . '><i>' . $ico . '</i>' . te($label) . '</a>';
         }
-        echo '</nav><span class="who"><a href="settings.php" class="' . ($page === 'settings.php' ? 'on' : '') . '" title="Cài đặt">⚙ Cài đặt</a>'
-           . '<span class="avatar" title="' . h($t['full_name']) . '">' . h(mb_strtoupper(mb_substr(trim(strrchr(' ' . $t['full_name'], ' ')), 0, 1))) . '</span>'
-           . '<a href="logout.php">Đăng xuất</a></span></header>';
+        echo '<details class="more' . ($in_more ? ' on' : '') . '"><summary>' . te('Thêm') . '</summary><div class="menu">' . $items . '</div></details></nav>'
+           . '<div class="top-right">' . live_pill((int)$t['id'])
+           . '<a class="btn launch" href="classes.php">▶ ' . te('Bắt đầu') . '</a>' . lang_switch()
+           . '<details class="user"><summary title="' . h($t['full_name']) . '"><span class="avatar">' . h(mb_strtoupper(mb_substr(trim(strrchr(' ' . $t['full_name'], ' ')), 0, 1))) . '</span></summary>'
+           . '<div class="menu"><b>' . h($t['full_name']) . '</b><a href="settings.php"' . ($page === 'settings.php' ? ' class="on"' : '') . '>⚙ ' . te('Cài đặt') . '</a>'
+           . '<a href="privacy.php">🔒 ' . te('Quyền riêng tư') . '</a><a href="logout.php">↩ ' . te('Đăng xuất') . '</a></div></details></div></header>';
+    }
+    if (!$bare && $parent && !empty($_SESSION['parent'])) {      // thanh trên cổng phụ huynh (xanh lá mạ)
+        echo '<header class="p-top"><a class="brand" href="home.php">' . ars_logo() . '<span>ARS · ' . te('Phụ huynh') . '</span></a>'
+           . '<nav><a href="home.php"' . ($page === 'home.php' ? ' class="on"' : '') . '>' . te('Tiến độ của con') . '</a><a href="home.php#account">' . te('Tài khoản') . '</a></nav>'
+           . '<div class="right">' . lang_switch() . '<a href="index.php?logout=1">' . te('Đăng xuất') . '</a></div></header>';
     }
     echo '<main>';
-    foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h($m) . '</div>';
+    foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h(t($m)) . '</div>';
     unset($_SESSION['flash']);
-    if (str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/parent/')) { if (!empty($_SESSION['parent'])) echo oauth_pending_prompt('parent', '../'); }
+    if ($parent) { if (!empty($_SESSION['parent'])) echo oauth_pending_prompt('parent', '../'); }
     elseif ($t) echo oauth_pending_prompt('teacher', '');
 }
 

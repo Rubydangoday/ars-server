@@ -14,7 +14,7 @@ $qid = (int)($_POST['question'] ?? 0);
 function reply($ok, $msg = '') { echo json_encode(['ok' => $ok, 'msg' => $msg], JSON_UNESCAPED_UNICODE); exit; }
 function question_of(array $ses, int $qid): array {
     $q = q1('SELECT * FROM questions WHERE id=? AND set_id=?', [$qid, $ses['set_id']]);
-    if (!$q) reply(false, 'Câu hỏi không thuộc buổi này.');
+    if (!$q) reply(false, t('Câu hỏi không thuộc buổi này.'));
     return $q;
 }
 function open_q(array $ses, array $q): void {
@@ -29,7 +29,7 @@ function close_q(int $sid, int $qid): void {
     q('UPDATE session_questions SET status="closed", closed_at=NOW(3) WHERE session_id=? AND question_id=? AND status="open"', [$sid, $qid]);
 }
 
-if ($ses['status'] !== 'running' && $act !== 'show_result') reply(false, 'Buổi học đã kết thúc.');
+if ($ses['status'] !== 'running' && $act !== 'show_result') reply(false, t('Buổi học đã kết thúc.'));
 
 switch ($act) {
     case 'conn_mode':                  // đổi kiểu kết nối clicker của lớp (Bluetooth / Wi-Fi)
@@ -50,7 +50,7 @@ switch ($act) {
         $pos = (int)qv('SELECT position FROM questions WHERE id=?', [(int)$ses['current_q']]);
         if ($ses['current_q']) close_q($sid, (int)$ses['current_q']);
         $nq = q1('SELECT * FROM questions WHERE set_id=? AND position>? ORDER BY position LIMIT 1', [$ses['set_id'], $pos]);
-        if (!$nq) { bump_state($sid); reply(true, 'Đã hết câu hỏi.'); }
+        if (!$nq) { bump_state($sid); reply(true, t('Đã hết câu hỏi.')); }
         open_q($ses, $nq);
         break;
     case 'show_result':
@@ -67,7 +67,7 @@ switch ($act) {
         q('UPDATE sessions SET status="ended", ended_at=NOW() WHERE id=?', [$sid]);
         break;
     default:
-        reply(false, 'Lệnh không hợp lệ.');
+        reply(false, t('Lệnh không hợp lệ.'));
 }
 bump_state($sid);
 reply(true);

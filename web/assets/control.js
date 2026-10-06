@@ -3,12 +3,15 @@
   const root = document.getElementById('ctl');
   const SID = root.dataset.session, CSRF = root.dataset.csrf;
   const $ = (id) => document.getElementById(id);
+  // Dịch: từ điển do page_head nhúng (window.ARS_I18N) khi giao diện tiếng Anh; {k} là biến
+  const T = (s, v) => { let r = (window.ARS_I18N || {})[s] || s; if (v) for (const k in v) r = r.split('{' + k + '}').join(v[k]); return r; };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const REASON = {
-    no_session: 'Lớp chưa bắt đầu buổi', unknown_seat: 'ID không có trong lớp', seat_taken: 'ID đã có máy khác đăng nhập',
-    mac_bound: 'Máy này đã đăng nhập ID khác', not_logged_in: 'Máy chưa điểm danh', id_mismatch: 'ID trong gói khác ID đã đăng nhập',
-    q_not_open: 'Câu chưa mở', q_closed: 'Câu đã đóng', late: 'Hết giờ', bad_option: 'Chữ vượt số lựa chọn',
-    no_change: 'Không cho đổi đáp án', malformed: 'Gói hỏng', wrong_link: 'Sai kiểu kết nối (lớp đang chọn kiểu khác)'
+    no_session: T('Lớp chưa bắt đầu buổi'), unknown_seat: T('ID không có trong lớp'), seat_taken: T('ID đã có máy khác đăng nhập'),
+    mac_bound: T('Máy này đã đăng nhập ID khác'), not_logged_in: T('Máy chưa điểm danh'), id_mismatch: T('ID trong gói khác ID đã đăng nhập'),
+    q_not_open: T('Câu chưa mở'), q_closed: T('Câu đã đóng'), late: T('Hết giờ'), bad_option: T('Chữ vượt số lựa chọn'),
+    no_change: T('Không cho đổi đáp án'), malformed: T('Gói hỏng'), wrong_link: T('Sai kiểu kết nối (lớp đang chọn kiểu khác)'),
+    mapping_mismatch: T('Remote không đúng học sinh đã ghép')
   };
   let st = null;
   let prevSeats = null, prevQ = null, prevCount = 0;   // để biết ô nào vừa đổi → nháy 0,3 s
@@ -20,8 +23,8 @@
   async function act(action, extra = {}) {
     const body = new URLSearchParams({ csrf: CSRF, session: SID, action, ...extra });
     const r = await fetch('api/action.php', { method: 'POST', body });
-    const j = await r.json().catch(() => ({ ok: false, msg: 'Lỗi máy chủ' }));
-    if (!j.ok) alert(j.msg || 'Không thực hiện được');
+    const j = await r.json().catch(() => ({ ok: false, msg: T('Lỗi máy chủ') }));
+    if (!j.ok) alert(j.msg || T('Không thực hiện được'));
     else if (j.msg) alert(j.msg);
     refresh();
   }
@@ -41,7 +44,7 @@
   document.querySelectorAll('#conn-seg button').forEach((b) => b.addEventListener('click', () => {
     if (!st || st.session.conn_mode === b.dataset.mode) return;
     const name = b.dataset.mode === 'wifi' ? 'Wi-Fi' : 'Bluetooth';
-    if (confirm(`Chuyển lớp sang kết nối ${name}? Server sẽ chỉ nhận gói từ clicker ${name}.`)) act('conn_mode', { mode: b.dataset.mode });
+    if (confirm(T('Chuyển lớp sang kết nối {m}? Server sẽ chỉ nhận gói từ clicker {m}.', { m: name }))) act('conn_mode', { mode: b.dataset.mode });
   }));
 
   function bars(dist, correct) {
@@ -55,17 +58,17 @@
   function render(s) {
     st = s;
     const ended = s.session.status !== 'running';
-    $('st-status').textContent = ended ? 'đã kết thúc' : 'đang học';
+    $('st-status').textContent = ended ? T('đã kết thúc') : T('đang học');
     $('st-status').className = 'tag ' + (ended ? '' : 'live');
     const gw = $('gw'), wifi = s.session.conn_mode === 'wifi';
     document.querySelectorAll('#conn-seg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === s.session.conn_mode));
     $('gw-usb').hidden = wifi || ended;
     if (wifi) {
-      gw.textContent = s.wifi.online ? `Wi-Fi: ${s.wifi.online} clicker đang gửi` : 'Wi-Fi: chưa có clicker nào';
+      gw.textContent = s.wifi.online ? T('Wi-Fi: {n} clicker đang gửi', { n: s.wifi.online }) : T('Wi-Fi: chưa có clicker nào');
       gw.className = 'gw ' + (s.wifi.online ? 'on' : 'off');
     } else {
-      const where = s.gateway.port === 'webserial' ? ' (USB máy GV)' : '';
-      gw.textContent = s.gateway.online ? `Gateway${where}: đang nhận (${s.gateway.pkt_per_s ?? 0} gói/s)` : 'Gateway: chưa kết nối';
+      const where = s.gateway.port === 'webserial' ? T(' (USB máy GV)') : '';
+      gw.textContent = s.gateway.online ? T('Gateway{w}: đang nhận ({n} gói/s)', { w: where, n: s.gateway.pkt_per_s ?? 0 }) : T('Gateway: chưa kết nối');
       gw.className = 'gw ' + (s.gateway.online ? 'on' : 'off');
     }
     $('allow_change').checked = s.session.allow_change;
@@ -73,20 +76,20 @@
 
     setHTML($('qlist'), s.questions.map((q) => {
       const cur = s.current && s.current.id === q.id;
-      const badge = q.status === 'open' ? '<span class="tag live">đang mở</span>' : q.status === 'closed' ? '<span class="tag">đã đóng</span>' : '';
+      const badge = q.status === 'open' ? `<span class="tag live">${T('đang mở')}</span>` : q.status === 'closed' ? `<span class="tag">${T('đã đóng')}</span>` : '';
       const btn = q.status === 'open'
-        ? `<button class="small" data-act="close" data-q="${q.id}">Đóng</button>`
-        : `<button class="small primary" data-act="open" data-q="${q.id}">${q.status === 'closed' ? 'Mở lại' : 'Mở'}</button>`;
-      const view = cur ? '' : `<button class="small link" data-act="current" data-q="${q.id}">Chiếu</button>`;
-      return `<li class="${cur ? 'cur' : ''}"><div><b>Câu ${q.position}</b> ${badge}<br><span class="muted small">${esc(q.content)}</span></div>
-              <div class="qbtn"><span class="muted small">${q.n_answered ? q.n_answered + ' trả lời' : ''}</span>${view}${ended ? '' : btn}</div></li>`;
+        ? `<button class="small" data-act="close" data-q="${q.id}">${T('Đóng')}</button>`
+        : `<button class="small primary" data-act="open" data-q="${q.id}">${q.status === 'closed' ? T('Mở lại') : T('Mở')}</button>`;
+      const view = cur ? '' : `<button class="small link" data-act="current" data-q="${q.id}">${T('Chiếu')}</button>`;
+      return `<li class="${cur ? 'cur' : ''}"><div><b>${T('Câu {n}', { n: q.position })}</b> ${badge}<br><span class="muted small">${esc(q.content)}</span></div>
+              <div class="qbtn"><span class="muted small">${q.n_answered ? T('{n} trả lời', { n: q.n_answered }) : ''}</span>${view}${ended ? '' : btn}</div></li>`;
     }).join(''));
 
     const c = s.current;
     $('cur').hidden = !c; $('cur-empty').hidden = !!c;
     if (c) {
-      $('cur-no').textContent = `Câu ${c.position}/${s.n_questions}`;
-      $('cur-state').textContent = c.status === 'open' ? 'đang mở' : c.status === 'closed' ? 'đã đóng' : 'chưa mở';
+      $('cur-no').textContent = T('Câu {n}/{all}', { n: c.position, all: s.n_questions });
+      $('cur-state').textContent = c.status === 'open' ? T('đang mở') : c.status === 'closed' ? T('đã đóng') : T('chưa mở');
       $('cur-state').className = 'tag ' + (c.status === 'open' ? 'live' : '');
       $('cur-timer').textContent = c.status === 'open' && c.deadline_left !== null ? `⏱ ${Math.ceil(c.deadline_left)} s` : '';
       $('cur-count').textContent = c.n_answered;
@@ -97,28 +100,28 @@
         Object.entries(c.options).map(([k, v]) => `<li class="${k === c.correct ? 'correct' : ''}"><b>${k}.</b> ${esc(v)}</li>`).join('') + '</ol>');
       setHTML($('cur-bars'), bars(c.dist, c.correct));
       $('btn-open').hidden = c.status === 'open';
-      $('btn-open').textContent = c.status === 'closed' ? 'Mở lại câu' : 'Mở câu';
+      $('btn-open').textContent = c.status === 'closed' ? T('Mở lại câu') : T('Mở câu');
       $('btn-close').hidden = c.status !== 'open';
-      $('btn-show').textContent = c.show_result ? 'Ẩn kết quả trên màn chiếu' : 'Hiện kết quả trên màn chiếu';
+      $('btn-show').textContent = c.show_result ? T('Ẩn kết quả trên màn chiếu') : T('Hiện kết quả trên màn chiếu');
     }
 
     $('n-logged').textContent = s.n_logged; $('n-students').textContent = s.n_students;
     const hl = $('head-live');
-    if (hl) hl.innerHTML = c ? `${c.status === 'open' && c.deadline_left !== null ? `<span class="timer">⏱ ${Math.ceil(c.deadline_left)} s</span>` : ''}<span><b>${c.n_answered}</b>/${s.n_logged} đã trả lời</span>` : '';
+    if (hl) hl.innerHTML = c ? `${c.status === 'open' && c.deadline_left !== null ? `<span class="timer">⏱ ${Math.ceil(c.deadline_left)} s</span>` : ''}<span><b>${c.n_answered}</b>/${s.n_logged} ${T('đã trả lời')}</span>` : '';
     // Ô nào vừa có đáp án mới / vừa điểm danh trong lần cập nhật này (cùng câu) thì nháy nhẹ.
     const qid = c ? c.id : null, fresh = new Set();
     if (prevSeats) s.seats.forEach((x) => { const p = prevSeats[x.seat]; if (p && ((qid === prevQ && x.answer && x.answer !== p.answer) || (x.present && !p.present))) fresh.add(x.seat); });
     prevSeats = Object.fromEntries(s.seats.map((x) => [x.seat, { answer: x.answer, present: x.present }])); prevQ = qid;
     setHTML($('seats'), s.seats.map((x) => {
       const cls = (x.answer ? 'ans' : x.present ? 'pres' : 'abs') + (fresh.has(x.seat) ? ' pulse' : '');
-      const tip = `${x.seat}. ${x.name}` + (x.present ? `\nMAC ${x.mac}\nPin ${x.batt_mv ?? '?'} mV, RSSI ${x.rssi ?? '?'} dBm` : '\nchưa điểm danh') + (x.answer ? `\nĐã chọn ${x.answer}` : '');
-      const rel = x.present && !ended ? ` data-act="release" data-seat="${x.seat}" data-confirm="Giải phóng ID ${x.seat} (${esc(x.name)})? Máy đang giữ ID này sẽ phải đăng nhập lại."` : '';
+      const tip = `${x.seat}. ${x.name}` + (x.present ? `\nMAC ${x.mac}\n${T('Pin')} ${x.batt_mv ?? '?'} mV, RSSI ${x.rssi ?? '?'} dBm` : '\n' + T('chưa điểm danh')) + (x.answer ? '\n' + T('Đã chọn {a}', { a: x.answer }) : '');
+      const rel = x.present && !ended ? ` data-act="release" data-seat="${x.seat}" data-confirm="${esc(T('Giải phóng ID {n} ({name})? Máy đang giữ ID này sẽ phải đăng nhập lại.', { n: x.seat, name: x.name }))}"` : '';
       return `<div class="seat ${cls}${x.low_batt ? ' low' : ''}" title="${esc(tip)}"${rel}><b>${x.seat}</b><span>${esc(x.name.split(' ').slice(-1)[0])}</span>${x.answer ? `<i>${x.answer}</i>` : ''}</div>`;
     }).join(''));
 
     setHTML($('warn'), s.warnings.length ? s.warnings.map((w) =>
       `<tr><td>${w.t}</td><td>${esc(REASON[w.reason] || w.reason)}</td><td>${w.seat_no ?? ''}</td><td>${w.qid ?? ''}</td><td>${esc(w.answer ?? '')}</td><td class="mono">${esc(w.mac ?? '')}</td><td>${w.n}</td></tr>`).join('')
-      : '<tr><td colspan="7" class="muted">Không có.</td></tr>');
+      : `<tr><td colspan="7" class="muted">${T('Không có.')}</td></tr>`);
   }
 
   async function refresh() {
@@ -126,7 +129,7 @@
       const r = await fetch(`api/state.php?id=${SID}&view=control`, { cache: 'no-store' });
       if (r.status === 401) { location.href = 'index.php'; return; }
       render(await r.json());
-    } catch (e) { $('gw').textContent = 'Mất kết nối tới máy chủ web'; $('gw').className = 'gw off'; }
+    } catch (e) { $('gw').textContent = T('Mất kết nối tới máy chủ web'); $('gw').className = 'gw off'; }
   }
   refresh();
   setInterval(refresh, 1000);

@@ -59,6 +59,7 @@ mysql ars < "$DST/db/migrate_005_lms.sql"
 mysql ars < "$DST/db/migrate_006_school_cloud_rewards.sql"
 mysql ars < "$DST/db/migrate_007_oauth.sql"
 mysql ars < "$DST/db/migrate_008_student_selfsignup.sql"
+mysql ars < "$DST/db/migrate_009_language.sql"
 
 # thư mục lưu file bài giảng (ngoài /opt để cập nhật mã không xoá mất)
 UPL=/var/lib/ars/uploads

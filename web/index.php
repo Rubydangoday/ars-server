@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_regenerate_id(true);
             $_SESSION['teacher'] = ['id' => (int)$t['id'], 'username' => $t['username'], 'full_name' => $t['full_name'], 'is_admin' => (int)$t['is_admin'] === 1];
             q('UPDATE teachers SET last_login=NOW() WHERE id=?', [$t['id']]);
+            apply_user_lang($t['lang'] ?? null);
             redirect('dashboard.php');
         } else $err = 'Sai tên đăng nhập hoặc mật khẩu.';
         usleep(400000);
@@ -40,22 +41,22 @@ auth_open('teacher', $first_run ? 'Chào mừng đến ARS' : 'Đăng nhập gi�
           $first_run ? 'Lần chạy đầu: tạo tài khoản quản trị cho máy chủ này.' : 'Quản lý lớp, soạn câu hỏi và điều khiển buổi học.');
 ?>
   <?php if ($err): ?><div class="flash err"><?= h($err) ?></div><?php endif; ?>
-  <?php if (isset($_GET['locked'])): ?><div class="flash err">Tài khoản đã bị khoá. Liên hệ giáo viên quản trị server.</div><?php endif; ?>
+  <?php if (isset($_GET['locked'])): ?><div class="flash err"><?= te('Tài khoản đã bị khoá. Liên hệ giáo viên quản trị server.') ?></div><?php endif; ?>
   <?php if (!empty($_SESSION['show_recovery'])): $rc = $_SESSION['show_recovery']; unset($_SESSION['show_recovery']); ?>
-    <div class="recovery"><b>Mã khôi phục mật khẩu của “<?= h($rc['user']) ?>”</b><code><?= h($rc['code']) ?></code>
-      <span class="small">Chép hoặc chụp lại mã này. Khi quên mật khẩu, dùng mã ở trang “Quên mật khẩu”. Mã chỉ hiện một lần.</span></div>
+    <div class="recovery"><b><?= te('Mã khôi phục mật khẩu của “') ?><?= h($rc['user']) ?>”</b><code><?= h($rc['code']) ?></code>
+      <span class="small"><?= te('Chép hoặc chụp lại mã này. Khi quên mật khẩu, dùng mã ở trang “Quên mật khẩu”. Mã chỉ hiện một lần.') ?></span></div>
   <?php endif; ?>
-  <?php if (!$first_run): ?><?= oauth_buttons('teacher', 'login', '', 'Đăng nhập với', [], true) ?><?= auth_divider() ?><?php endif; ?>
+  <?php if (!$first_run): ?><?= oauth_buttons('teacher', 'login', '', t('Đăng nhập với'), [], true) ?><?= auth_divider() ?><?php endif; ?>
   <form method="post" class="stack">
     <?= csrf_field() ?>
     <?php if ($first_run): ?>
-      <label>Họ tên <input name="full_name" required value="<?= h($_POST['full_name'] ?? '') ?>" placeholder="Nguyễn Văn A"></label>
+      <label><?= te('Họ tên') ?> <input name="full_name" required value="<?= h($_POST['full_name'] ?? '') ?>" placeholder="<?= te('Nguyễn Văn A') ?>"></label>
     <?php endif; ?>
-    <label>Tên đăng nhập <input name="username" required autofocus autocomplete="username" value="<?= h($_POST['username'] ?? '') ?>" placeholder="vd: nguyenvana"></label>
-    <label>Mật khẩu <input name="password" type="password" required autocomplete="current-password" placeholder="••••••••"></label>
-    <button class="primary"><?= $first_run ? 'Tạo tài khoản' : 'Đăng nhập' ?></button>
+    <label><?= te('Tên đăng nhập') ?> <input name="username" required autofocus autocomplete="username" value="<?= h($_POST['username'] ?? '') ?>" placeholder="<?= te('vd: nguyenvana') ?>"></label>
+    <label><?= te('Mật khẩu') ?> <input name="password" type="password" required autocomplete="current-password" placeholder="••••••••"></label>
+    <button class="primary"><?= $first_run ? t('Tạo tài khoản') : t('Đăng nhập') ?></button>
   </form>
   <?php if (!$first_run): ?><p class="auth-links">
-    <?php if (setting('teacher_signup', 'invite') !== 'closed'): ?><a href="register.php">Tạo tài khoản mới</a><?php else: ?><span></span><?php endif; ?>
-    <a href="forgot.php">Quên mật khẩu?</a></p><?php endif; ?>
+    <?php if (setting('teacher_signup', 'invite') !== 'closed'): ?><a href="register.php"><?= te('Tạo tài khoản mới') ?></a><?php else: ?><span></span><?php endif; ?>
+    <a href="forgot.php"><?= te('Quên mật khẩu?') ?></a></p><?php endif; ?>
 <?php auth_close();

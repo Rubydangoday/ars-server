@@ -25,7 +25,7 @@ mariadbd --no-defaults --datadir="$W/db" --socket="$W/m.sock" --port="$DBPORT" -
 for _ in $(seq 1 30); do mariadb -S "$W/m.sock" -uroot -e 'select 1' >/dev/null 2>&1 && break; sleep 1; done
 M="mariadb -S $W/m.sock -uroot"
 $M < "$ROOT/db/schema.sql"
-for f in migrate_002_hocsinh migrate_003_baigiang_ai migrate_004_link_nhieu_gv_ketnoi migrate_005_lms migrate_006_school_cloud_rewards migrate_007_oauth migrate_008_student_selfsignup; do $M ars < "$ROOT/db/$f.sql"; done
+for f in migrate_002_hocsinh migrate_003_baigiang_ai migrate_004_link_nhieu_gv_ketnoi migrate_005_lms migrate_006_school_cloud_rewards migrate_007_oauth migrate_008_student_selfsignup migrate_009_language; do $M ars < "$ROOT/db/$f.sql"; done
 $M -e "CREATE USER ars@'127.0.0.1' IDENTIFIED BY 'arspw'; GRANT ALL ON ars.* TO ars@'127.0.0.1';"
 
 cat > "$W/test.ini" <<EOF
@@ -53,7 +53,7 @@ sleep 1
 cd "$ROOT"
 python3 tests/http_smoke.py >"$W/smoke.json"
 printf '%-24s %s\n' http_smoke "$(python3 -c "import json;print(json.load(open('$W/smoke.json'))['passed'])")"
-for t in ingest_integration extended_integration v11_integration oauth_integration student_signup_integration; do
+for t in ingest_integration extended_integration v11_integration oauth_integration student_signup_integration i18n_integration; do
   python3 "tests/$t.py" "$W/smoke.json" >"$W/$t.json"
   printf '%-24s %s\n' "$t" "$(python3 -c "import json;print(json.load(open('$W/$t.json'))['passed'])")"
 done

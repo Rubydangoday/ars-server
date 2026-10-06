@@ -28,10 +28,10 @@ function oauth_enabled(): array {
 }
 /** '' = dùng được; ngược lại là lý do hiển thị dưới nút bị mờ. */
 function oauth_status(string $p): string {
-    if (oauth_client($p)['id'] === '' || oauth_client($p)['secret'] === '') return 'Quản trị server chưa bật (Cài đặt → 🔐 Google / Facebook).';
+    if (oauth_client($p)['id'] === '' || oauth_client($p)['secret'] === '') return t('Quản trị server chưa bật (Cài đặt → 🔐 Google / Facebook).');
     $host = strtolower(preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
     if (!is_https() && !in_array($host, ['localhost', '127.0.0.1'], true) && empty(cfg()['oauth_endpoints']))
-        return 'Google/Facebook chỉ cho đăng nhập qua link https' . (setting('public_url') ? ': ' . setting('public_url') . web_root_path() . '/' : ' (bật link Internet: sudo ars public on).');
+        return t('Google/Facebook chỉ cho đăng nhập qua link https') . (setting('public_url') ? ': ' . setting('public_url') . web_root_path() . '/' : ' ' . t('(bật link Internet: sudo ars public on).'));
     return '';
 }
 /** Logo chính thức dạng SVG (không tải từ Internet). */
@@ -107,9 +107,9 @@ function oauth_identity(string $provider, string $subject, string $type): ?array
 }
 function oauth_link(string $provider, array $prof, string $type, string $key): void {
     $o = oauth_identity($provider, $prof['subject'], $type);
-    if ($o && $o['user_key'] !== $key) throw new RuntimeException('Tài khoản ' . OAUTH_PROVIDERS[$provider] . ' này đã liên kết với một tài khoản ARS khác. Gỡ liên kết ở tài khoản kia trước.');
+    if ($o && $o['user_key'] !== $key) throw new RuntimeException(t('Tài khoản {p} này đã liên kết với một tài khoản ARS khác. Gỡ liên kết ở tài khoản kia trước.', ['p' => OAUTH_PROVIDERS[$provider]]));
     if (!$o && qv('SELECT 1 FROM oauth_identities WHERE user_type=? AND user_key=? AND provider=?', [$type, $key, $provider]))
-        throw new RuntimeException('Tài khoản đã liên kết một ' . OAUTH_PROVIDERS[$provider] . ' khác. Gỡ liên kết cũ trước.');
+        throw new RuntimeException(t('Tài khoản đã liên kết một {p} khác. Gỡ liên kết cũ trước.', ['p' => OAUTH_PROVIDERS[$provider]]));
     q('INSERT INTO oauth_identities (provider, subject, user_type, user_key, email, name) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE email=VALUES(email), name=VALUES(name)',
       [$provider, $prof['subject'], $type, $key, $prof['email'], $prof['name']]);
 }
@@ -123,7 +123,7 @@ function oauth_button(string $p, string $for, string $mode, string $root, string
           . '<input type="hidden" name="action" value="start"><input type="hidden" name="provider" value="' . $p . '"><input type="hidden" name="for" value="' . $for . '"><input type="hidden" name="mode" value="' . $mode . '">';
     foreach ($hidden as $k => $v) $html .= '<input type="hidden" name="' . h($k) . '" value="' . h($v) . '">';
     $why = oauth_status($p);
-    return $html . '<button class="oauth-btn oauth-' . $p . '"' . ($why ? ' disabled title="' . h($why) . '"' : '') . '>' . oauth_logo($p) . '<span>' . h($label . ' ' . OAUTH_PROVIDERS[$p]) . '</span></button></form>';
+    return $html . '<button class="oauth-btn oauth-' . $p . '"' . ($why ? ' disabled title="' . h($why) . '"' : '') . '>' . oauth_logo($p) . '<span>' . h(t($label) . ' ' . OAUTH_PROVIDERS[$p]) . '</span></button></form>';
 }
 /** Các nút "Đăng nhập với Google / Facebook". $always: hiện cả nút chưa dùng được (mờ + lý do) để người dùng biết có tính năng. */
 function oauth_buttons(string $for, string $mode, string $root = '', string $label = 'Đăng nhập với', array $hidden = [], bool $always = false): string {
@@ -140,13 +140,13 @@ function oauth_buttons(string $for, string $mode, string $root = '', string $lab
 function oauth_manage_html(string $for, string $key, string $root = ''): string {
     $links = oauth_links($for, $key); $on = oauth_enabled();
     if (!$on && !$links) return '';
-    $html = '<div class="oauth-manage"><h3>Đăng nhập bằng Google / Facebook</h3>';
+    $html = '<div class="oauth-manage"><h3>' . te('Đăng nhập bằng Google / Facebook') . '</h3>';
     foreach (OAUTH_PROVIDERS as $p => $name) {
         if (isset($links[$p])) $html .= '<form method="post" action="' . h($root) . 'oauth.php" class="row">' . csrf_field() . '<input type="hidden" name="action" value="unlink"><input type="hidden" name="provider" value="' . $p . '"><input type="hidden" name="for" value="' . $for . '">'
-            . '<span>✅ ' . $name . ': ' . h($links[$p]['email'] ?? $links[$p]['name'] ?? 'đã liên kết') . '</span><button class="small" onclick="return confirm(\'Gỡ liên kết ' . $name . '?\')">Gỡ liên kết</button></form>';
+            . '<span>✅ ' . $name . ': ' . h($links[$p]['email'] ?? $links[$p]['name'] ?? t('đã liên kết')) . '</span><button class="small" onclick="return confirm(' . h(json_encode(t('Gỡ liên kết {p}?', ['p' => $name]), JSON_UNESCAPED_UNICODE)) . ')">' . te('Gỡ liên kết') . '</button></form>';
         elseif (isset($on[$p])) $html .= oauth_button($p, $for, 'link', $root, 'Liên kết');
     }
-    return $html . '<p class="muted small">Sau khi liên kết, bấm nút Google / Facebook ở màn hình đăng nhập để vào thẳng. Mật khẩu ARS vẫn dùng được.</p></div>';
+    return $html . '<p class="muted small">' . te('Sau khi liên kết, bấm nút Google / Facebook ở màn hình đăng nhập để vào thẳng. Mật khẩu ARS vẫn dùng được.') . '</p></div>';
 }
 
 // ------------------------------------------------------------------ đăng ký nhanh: tài khoản Google/Facebook "đang chờ"
@@ -180,7 +180,7 @@ function oauth_username_suggest(?string $email, string $table): string {
 }
 /** Dải thông báo "Đang tạo tài khoản bằng Google: email · Huỷ" trên trang đăng ký. */
 function oauth_pending_banner(array $p, string $root): string {
-    return '<div class="oauth-pending">' . oauth_logo($p['provider']) . '<div><b>Đang tạo tài khoản bằng ' . OAUTH_PROVIDERS[$p['provider']] . '</b><br><span class="small">'
-         . h($p['email'] ?? $p['name'] ?? '') . ' · không cần mật khẩu</span></div><form method="post" action="' . h($root) . 'oauth.php">' . csrf_field()
-         . '<input type="hidden" name="action" value="cancel"><input type="hidden" name="provider" value="' . h($p['provider']) . '"><input type="hidden" name="for" value="' . h($p['for']) . '"><button class="small">Huỷ</button></form></div>';
+    return '<div class="oauth-pending">' . oauth_logo($p['provider']) . '<div><b>' . te('Đang tạo tài khoản bằng {p}', ['p' => OAUTH_PROVIDERS[$p['provider']]]) . '</b><br><span class="small">'
+         . h($p['email'] ?? $p['name'] ?? '') . ' · ' . te('không cần mật khẩu') . '</span></div><form method="post" action="' . h($root) . 'oauth.php">' . csrf_field()
+         . '<input type="hidden" name="action" value="cancel"><input type="hidden" name="provider" value="' . h($p['provider']) . '"><input type="hidden" name="for" value="' . h($p['for']) . '"><button class="small">' . te('Huỷ') . '</button></form></div>';
 }
