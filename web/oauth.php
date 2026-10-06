@@ -28,13 +28,13 @@ function login_as(string $for, string $key): void {
         $_SESSION['teacher'] = ['id' => (int)$t['id'], 'username' => $t['username'], 'full_name' => $t['full_name'], 'is_admin' => (int)$t['is_admin'] === 1];
         q('UPDATE teachers SET last_login=NOW() WHERE id=?', [$t['id']]);
     } elseif ($for === 'student') {
-        $in = q1('SELECT full_name FROM students WHERE student_code=? ORDER BY id DESC LIMIT 1', [$key]);
-        if (!$in) fail('Mã học sinh không còn trong lớp nào. Liên hệ giáo viên.', 'student/index.php');
         $u = q1('SELECT * FROM student_users WHERE student_code=?', [$key]);
+        $nm = student_display_name($key);
+        if (!$u && $nm === null) return;                       // tài khoản đã bị xoá → bỏ liên kết cũ
         if (!$u) q('INSERT INTO student_users (student_code, must_change) VALUES (?,1)', [$key]);
         q('UPDATE student_users SET last_login=NOW() WHERE student_code=?', [$key]);
         session_regenerate_id(true);
-        $_SESSION['student'] = ['code' => $key, 'full_name' => $in['full_name'], 'must_change' => !$u || $u['must_change']];
+        $_SESSION['student'] = ['code' => $key, 'full_name' => $nm ?? $key, 'must_change' => !$u || $u['must_change']];
     } else {
         $p = q1('SELECT * FROM parents WHERE id=?', [(int)$key]);
         if (!$p) return;

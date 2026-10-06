@@ -31,6 +31,39 @@ function require_student(): array {
     return $s;
 }
 
+/**
+ * Học sinh vào lớp bằng mã tham gia lớp (6 ký tự giáo viên cung cấp). Trả về thông báo; lỗi thì ném RuntimeException.
+ * Khoá dòng lớp để hai học sinh vào cùng lúc không bị trùng số ghế.
+ */
+function join_class(string $code, string $name, string $join): string {
+    $join = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $join));
+    if ($join === '') throw new RuntimeException('Nhập mã tham gia lớp (6 ký tự giáo viên cung cấp).');
+    $own = db()->inTransaction();
+    if (!$own) db()->beginTransaction();
+    try {
+        $cls = q1('SELECT * FROM classes WHERE join_code=? FOR UPDATE', [$join]);
+        if (!$cls) throw new RuntimeException('Mã lớp không đúng. Kiểm tra lại mã giáo viên cung cấp (6 ký tự).');
+        if (!$cls['join_open']) throw new RuntimeException('Lớp này đang khoá đăng ký. Nhờ giáo viên mở đăng ký.');
+        if (q1('SELECT 1 FROM students WHERE class_id=? AND student_code=?', [$cls['id'], $code])) {
+            $msg = 'Bạn đã ở trong lớp ' . $cls['name'] . '.';
+        } else {
+            $used = array_map('intval', array_column(qall('SELECT seat_no FROM students WHERE class_id=?', [$cls['id']]), 'seat_no'));
+            $seat = 0; for ($i = 1; $i <= 99; $i++) if (!in_array($i, $used, true)) { $seat = $i; break; }
+            if (!$seat) throw new RuntimeException('Lớp đã đủ 99 học sinh.');
+            q('INSERT INTO students (class_id, seat_no, student_code, full_name) VALUES (?,?,?,?)', [$cls['id'], $seat, $code, mb_substr($name, 0, 100)]);
+            $msg = 'Bạn đã vào lớp ' . $cls['name'] . ' — số thứ tự (ID trên clicker) của bạn là ' . $seat . '.';
+        }
+        q('UPDATE student_users SET unverified=0 WHERE student_code=?', [$code]);   // mã lớp do giáo viên đưa: đủ tin là học sinh của lớp
+        if (!$own) db()->commit();
+        return $msg;
+    } catch (Throwable $e) { if (!$own && db()->inTransaction()) db()->rollBack(); throw $e; }
+}
+/** Họ tên hiển thị: theo danh sách lớp (mới nhất), nếu chưa thuộc lớp nào thì theo tài khoản. */
+function student_display_name(string $code): ?string {
+    return qv('SELECT full_name FROM students WHERE student_code=? ORDER BY id DESC LIMIT 1', [$code])
+        ?? qv('SELECT full_name FROM student_users WHERE student_code=?', [$code]);
+}
+
 /** Các lớp học sinh thuộc về (theo MSSV). */
 function my_classes(string $code): array {
     return qall('SELECT st.class_id, st.seat_no, st.full_name, c.name AS class_name, c.teacher_id, t.full_name AS teacher_name '

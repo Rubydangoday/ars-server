@@ -3,7 +3,16 @@
 require __DIR__ . '/../lib/student.php';
 $me = require_student();
 $code = $me['code'];
+if (($_POST['action'] ?? '') === 'join') {        // vào lớp bằng mã tham gia lớp giáo viên cung cấp
+    try { flash(join_class($code, $me['full_name'], (string)($_POST['join'] ?? '')), 'ok'); fx_once('celebrate'); }
+    catch (RuntimeException $e) { flash($e->getMessage(), 'err'); }
+    redirect('home.php');
+}
 $classes = my_classes($code);
+$join_form = fn(bool $big) => '<form method="post" class="' . ($big ? 'card join-big' : 'join-small') . '">' . csrf_field() . '<input type="hidden" name="action" value="join">'
+    . ($big ? '<h2>🏫 Vào lớp học</h2><p class="muted">Bạn chưa ở lớp nào. Nhập <b>mã tham gia lớp</b> (6 ký tự) giáo viên cho để xem bài giảng, bài tập và kết quả bấm Remote.</p>' : '<span class="muted small">Vào thêm lớp khác:</span>')
+    . '<div class="row"><input name="join" maxlength="6" required placeholder="VD: K7M2QX" value="' . h(strtoupper((string)($_GET['join'] ?? ''))) . '" style="text-transform:uppercase;letter-spacing:3px;max-width:180px">'
+    . '<button class="primary' . ($big ? '' : ' small') . '">Vào lớp</button></div></form>';
 $items = my_items($code);
 $done = array_filter($items, fn($r) => $r['status'] !== 'absent');
 $right = count(array_filter($done, fn($r) => $r['status'] === 'right'));
@@ -48,7 +57,7 @@ student_head('Tổng quan', 'home.php');
     <div class="lvbar"><span style="width:<?= $st['lv_pct'] ?>%"></span></div></div>
   <div class="cta"><a class="btn" href="tutor.php">🦉 Học cùng Cú Học</a></div>
 </div>
-<p class="muted"><?= h(implode(' · ', array_column($classes, 'class_name'))) ?></p>
+<?php if (!$classes): ?><?= $join_form(true) ?><?php else: ?><p class="muted"><?= h(implode(' · ', array_column($classes, 'class_name'))) ?></p><?php endif; ?>
 
 <div class="kpis">
   <div><b><?= $done ? round($right * 100 / count($done)) : 0 ?> %</b><span>câu đúng (<?= $right ?>/<?= count($done) ?>)</span></div>
@@ -109,4 +118,5 @@ if ($newl): ?>
     </a>
   <?php endforeach; ?>
 </section>
+<?= $classes ? $join_form(false) : '' ?>
 <?php student_foot();

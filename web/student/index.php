@@ -8,16 +8,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $code = trim($_POST['code'] ?? '');
     $pw = $_POST['password'] ?? '';
     $inClass = q1('SELECT full_name FROM students WHERE student_code=? ORDER BY id DESC LIMIT 1', [$code]);
-    $u = $inClass ? q1('SELECT * FROM student_users WHERE student_code=?', [$code]) : null;
-    $ok = $inClass && ($u && $u['password_hash'] ? password_verify($pw, $u['password_hash']) : hash_equals($code, $pw));
+    $u = $code !== '' ? q1('SELECT * FROM student_users WHERE student_code=?', [$code]) : null;
+    // Có mật khẩu riêng: đăng nhập được cả khi chưa vào lớp nào. Mật khẩu mặc định = MSSV chỉ dành cho học sinh có trong danh sách lớp.
+    $ok = $u && $u['password_hash'] ? password_verify($pw, $u['password_hash']) : ($inClass && hash_equals($code, $pw));
     if ($ok) {
         if (!$u) q('INSERT INTO student_users (student_code, must_change) VALUES (?,1)', [$code]);
         q('UPDATE student_users SET last_login=NOW() WHERE student_code=?', [$code]);
         session_regenerate_id(true);
-        $_SESSION['student'] = ['code' => $code, 'full_name' => $inClass['full_name'], 'must_change' => !$u || $u['must_change']];
+        $_SESSION['student'] = ['code' => $code, 'full_name' => student_display_name($code) ?? $code, 'must_change' => !$u || $u['must_change']];
         redirect('home.php');
     }
-    $err = !$inClass ? 'MSSV này chưa có trong lớp nào. Bấm “Đăng ký” và nhập mã tham gia lớp giáo viên cung cấp.'
+    $err = !$inClass && !$u ? 'MSSV này chưa có tài khoản. Bấm “Tạo tài khoản mới” để đăng ký.'
          : ($u && $u['password_hash'] ? 'Mật khẩu không đúng. Quên mật khẩu: nhờ giáo viên bấm “đặt lại MK”.'
                                       : 'Mật khẩu không đúng. Với lần đăng nhập đầu tiên, mật khẩu mặc định là MSSV của bạn.');
     usleep(400000);

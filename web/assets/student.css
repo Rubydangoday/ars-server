@@ -304,3 +304,8 @@ body.stu .lb tr.me td { animation: stu-glow 1.2s ease-in-out 2; }
 .stu-roles a.on { background: linear-gradient(100deg, #ec4899, #8b5cf6); color: #fff; }
 .stu-roles a:hover { text-decoration: none; transform: translateY(-1px); }
 body.stu .login .oauth-btn { border-radius: 14px; font-weight: 800; }
+/* vào lớp bằng mã */
+.join-big { border: 3px dashed #c4b5fd; text-align: left; }
+.join-big h2 { margin-top: 0; }
+.join-small { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 24px 0 0; }
+.join-small .row, .join-big .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

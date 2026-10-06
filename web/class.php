@@ -84,7 +84,10 @@ if ($act === 'join_renew') { class_join_code($cid, true); flash('Đã tạo mã 
 if ($act === 'join_toggle') { q('UPDATE classes SET join_open=1-join_open WHERE id=?', [$cid]); redirect("class.php?id=$cid#join"); }
 if ($act === 'reset_pw') {
     $code = (string)qv('SELECT student_code FROM students WHERE class_id=? AND seat_no=?', [$cid, (int)$_POST['seat_no']]);
-    if ($code !== '') { q('DELETE FROM student_users WHERE student_code=?', [$code]); flash("Đã đặt lại mật khẩu của $code về mặc định (= MSSV)."); }
+    if ($code !== '') {
+        q('DELETE FROM student_users WHERE student_code=?', [$code]);
+        q('DELETE FROM oauth_identities WHERE user_type="student" AND user_key=?', [$code]);   // thu hồi cả đăng nhập Google/Facebook đã gắn
+        flash("Đã đặt lại mật khẩu của $code về mặc định (= MSSV)."); }
     redirect("class.php?id=$cid");
 }
 
@@ -130,7 +133,9 @@ $sessions = qall('SELECT s.*, qs.title FROM sessions s JOIN question_sets qs ON 
 $assigns = qall('SELECT a.*, qs.title AS set_title, (SELECT COUNT(*) FROM questions q WHERE q.set_id=a.set_id) AS n_q, '
               . '(SELECT COUNT(DISTINCT student_code) FROM practice_attempts p WHERE p.assignment_id=a.id AND p.finished_at IS NOT NULL) AS n_done '
               . 'FROM practice_assignments a JOIN question_sets qs ON qs.id=a.set_id WHERE a.class_id=? ORDER BY a.id DESC', [$cid]);
-$accounts = array_column(qall('SELECT u.student_code, u.last_login FROM student_users u JOIN students s ON s.student_code=u.student_code WHERE s.class_id=?', [$cid]), 'last_login', 'student_code');
+$acc_rows = qall('SELECT u.student_code, u.last_login, u.unverified FROM student_users u JOIN students s ON s.student_code=u.student_code WHERE s.class_id=?', [$cid]);
+$accounts = array_column($acc_rows, 'last_login', 'student_code');
+$unverified = array_flip(array_column(array_filter($acc_rows, fn($r) => (int)$r['unverified'] === 1), 'student_code'));   // tự đăng ký trước khi có trong danh sách lớp
 $edit = isset($_GET['edit']) ? q1('SELECT * FROM students WHERE class_id=? AND seat_no=?', [$cid, (int)$_GET['edit']]) : null;
 $next_seat = (int)qv('SELECT COALESCE(MAX(seat_no),0)+1 FROM students WHERE class_id=?', [$cid]);
 
@@ -240,6 +245,7 @@ page_head($c['name'], 'classes.php');
       <tr><td><?= (int)$s['seat_no'] ?></td><td><?= h($s['student_code']) ?></td><td><?= h($s['full_name']) ?></td>
         <td><?php if (!$s['student_code']): ?><span class="muted small">cần MSSV để đăng nhập</span>
             <?php elseif ($acc): ?><span class="small">đã vào <?= h(substr((string)$accounts[$s['student_code']], 0, 16)) ?></span>
+              <?php if (isset($unverified[$s['student_code']])): ?><span class="tag off" title="Tài khoản này được tự tạo trước khi MSSV có trong danh sách lớp, chưa vào lớp bằng mã tham gia. Hỏi học sinh có tự tạo không; nếu không, bấm “đặt lại MK” để thu hồi.">⚠ tự tạo, cần kiểm tra</span><?php endif; ?>
               <form method="post" class="inline" onsubmit="return confirm('Đặt lại mật khẩu về MSSV?')"><?= csrf_field() ?><input type="hidden" name="action" value="reset_pw"><input type="hidden" name="seat_no" value="<?= (int)$s['seat_no'] ?>"><button class="link" title="Xoá mật khẩu: học sinh đăng nhập lại bằng MSSV hoặc đăng ký lại">đặt lại MK</button></form>
             <?php else: ?><span class="muted small">chưa đăng nhập</span><?php endif; ?></td>
         <td class="right">

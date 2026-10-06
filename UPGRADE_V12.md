@@ -53,3 +53,13 @@ Secret được lưu trong bảng settings và không hiển thị lại (ô hi�
 ## Tệp
 
 `db/migrate_007_oauth.sql`, `web/lib/oauth.php`, `web/oauth.php`. Sửa: `index.php`, `settings.php`, `student/index.php`, `student/account.php`, `parent/index.php`, `parent/home.php`, `assets/style.css`, `deploy/install_ubuntu.sh`. Test: `tests/oauth_integration.py` (72 kiểm tra).
+
+## Bổ sung: học sinh đăng ký không cần mã lớp (migration 008)
+
+```bash
+mysql -u root -p ars < db/migrate_008_student_selfsignup.sql
+```
+
+- Trang **Tạo tài khoản mới** của học sinh: chỉ cần MSSV + họ tên + mật khẩu (hoặc Google/Facebook). *Mã tham gia lớp* không bắt buộc.
+- Học sinh chưa có lớp vẫn đăng nhập được; trang **Tổng quan** hiện ô **Vào lớp học** để nhập mã 6 ký tự giáo viên cho. Học sinh đã có lớp vẫn vào thêm lớp khác ở cuối trang Tổng quan. Link `/hs/MÃLỚP` khi đã đăng nhập tự điền sẵn mã.
+- An toàn: tài khoản tự tạo khi MSSV chưa có trong danh sách lớp nào bị đánh dấu *chưa xác minh* (mật khẩu mặc định = MSSV không áp dụng). Vào lớp bằng mã thì hết đánh dấu. Nếu giáo viên **tự thêm** MSSV đó vào danh sách, trang lớp hiện **⚠ tự tạo, cần kiểm tra** — hỏi học sinh; không phải thì bấm **đặt lại MK** (xoá tài khoản và cả liên kết Google/Facebook).
