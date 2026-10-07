@@ -1,41 +1,44 @@
 <?php
-// Rút kinh nghiệm sau kiểm tra: gom câu sai theo chủ đề và theo lý do, đưa ra bài học + kế hoạch ôn kỹ từng phần.
-require __DIR__ . '/../lib/student.php';
+// Rút kinh nghiệm sau mỗi bài: buổi Remote trên lớp, lượt luyện tập trên web hoặc bài tập về nhà đã chấm.
+// Gom câu sai theo chủ đề và theo lý do, đưa ra bài học + kế hoạch ôn kỹ từng phần.
+require __DIR__ . '/../lib/lms.php';
 $me = require_student();
 $code = $me['code'];
 $NOTOPIC = '(chưa gắn chủ đề)';
-$items = my_items($code);
+$items = all_items($code);
 
-// danh sách buổi: bài kiểm tra trước, rồi buổi học; mới nhất trước
+// danh sách bài (khoá s<id> | p<id> | h<id>): mới nhất trước, bài kiểm tra trên lớp được đánh dấu
 $sessions = [];
-foreach ($items as $r) $sessions[$r['session_id']] ??= $r;
-uasort($sessions, fn($a, $b) => [$b['kind'] === 'test', $b['started_at']] <=> [$a['kind'] === 'test', $a['started_at']]);
-$sid = (int)($_GET['session'] ?? array_key_first($sessions) ?? 0);
+foreach ($items as $r) $sessions[$r['bai']] ??= $r;
+uasort($sessions, fn($a, $b) => strcmp((string)$b['started_at'], (string)$a['started_at']));
+$sid = (string)($_GET['bai'] ?? (isset($_GET['session']) ? 's' . (int)$_GET['session'] : array_key_first($sessions) ?? ''));
 $S = $sessions[$sid] ?? null;
+$kind = $S['source'] ?? 'remote';
+$rid = (int)substr($sid, 1);            // id buổi / lượt luyện tập / bài tập
 $notes = [];
 foreach (qall('SELECT * FROM wrong_notes WHERE student_code=?', [$code]) as $n) $notes[(int)$n['question_id']] = $n;
 
 student_head('Rút kinh nghiệm', 'lessons.php');
-echo '<h1>Rút kinh nghiệm</h1>';
-if (!$S) { echo '<div class="empty">Chưa có bài nào được công bố kết quả.</div>'; student_foot(); exit; }
+echo '<div class="page-head"><div><h1>📝 Rút kinh nghiệm</h1><p class="muted">Nhìn lại từng bài: điểm, phần yếu theo chủ đề, nguyên nhân sai và kế hoạch ôn kỹ.</p></div></div>';
+if (!$S) { echo '<div class="empty">Chưa có bài nào để rút kinh nghiệm. Sau khi bạn làm xong một lượt ôn tập, một bài tập về nhà được chấm, hoặc một buổi học bấm Remote được công bố, kết quả sẽ hiện ở đây.</div>'; student_foot(); exit; }
 ?>
 <form class="filters" method="get">
-  <select name="session" onchange="this.form.submit()">
-    <?php foreach ($sessions as $id => $r): ?><option value="<?= (int)$id ?>" <?= $id === $sid ? 'selected' : '' ?>><?= $r['kind'] === 'test' ? '[Kiểm tra] ' : '' ?><?= h(substr($r['started_at'], 0, 10) . ' — ' . $r['set_title']) ?></option><?php endforeach; ?>
+  <select name="bai" onchange="this.form.submit()">
+    <?php foreach ($sessions as $id => $r): ?><option value="<?= h($id) ?>" <?= $id === $sid ? 'selected' : '' ?>><?= SOURCE_LABEL[$r['source']][0] ?> <?= $r['kind'] === 'test' ? '[Kiểm tra] ' : '' ?><?= h(substr($r['started_at'], 0, 10) . ' — ' . $r['set_title']) ?></option><?php endforeach; ?>
   </select>
   <button type="button" onclick="window.print()">In / lưu PDF</button>
 </form>
 <?php
-$mine = array_values(array_filter($items, fn($r) => (int)$r['session_id'] === $sid));
+$mine = array_values(array_filter($items, fn($r) => $r['bai'] === $sid));
 $absent = !array_filter($mine, fn($r) => $r['status'] !== 'absent');
 $n = count($mine);
 $ok = count(array_filter($mine, fn($r) => $r['status'] === 'right'));
 $wrong = array_values(array_filter($mine, fn($r) => in_array($r['status'], ['wrong', 'blank'], true)));
 $blank = count(array_filter($mine, fn($r) => $r['status'] === 'blank'));
-// điểm trung bình lớp (học sinh có mặt)
-$cls = q1('SELECT COUNT(DISTINCT l.seat_no) n_present, SUM(f.answer=q.correct) n_ok FROM session_logins l '
+// điểm trung bình lớp (học sinh có mặt) — chỉ có với buổi Remote trên lớp
+$cls = $kind !== 'remote' ? null : q1('SELECT COUNT(DISTINCT l.seat_no) n_present, SUM(f.answer=q.correct) n_ok FROM session_logins l '
         . 'LEFT JOIN session_questions sq ON sq.session_id=l.session_id LEFT JOIN questions q ON q.id=sq.question_id AND q.correct IS NOT NULL AND q.correct<>"" '
-        . 'LEFT JOIN final_answers f ON f.session_q_id=sq.id AND f.seat_no=l.seat_no AND q.id IS NOT NULL WHERE l.session_id=?', [$sid]);
+        . 'LEFT JOIN final_answers f ON f.session_q_id=sq.id AND f.seat_no=l.seat_no AND q.id IS NOT NULL WHERE l.session_id=?', [$rid]);
 $class_avg = ($cls && $cls['n_present'] && $n) ? $cls['n_ok'] / $cls['n_present'] * 10 / $n : null;
 $score = $n ? $ok * 10 / $n : 0;
 
@@ -65,11 +68,13 @@ $ms = mastery($code, array_column($wrong, 'question_id'));
   <div class="big"><?= number_format($score, 1, ',', '') ?><small>/10</small></div>
   <div><b><?= $ok ?>/<?= $n ?></b> câu đúng · <?= count($wrong) - $blank ?> sai · <?= $blank ?> bỏ trống
     <?php if ($class_avg !== null): ?><br><span class="small">Trung bình lớp: <?= number_format($class_avg, 1, ',', '') ?>/10</span><?php endif; ?>
-    <br><span class="muted small"><?= h($S['set_title']) ?> · <?= h($S['class_name']) ?> · <?= h(substr($S['started_at'], 0, 16)) ?></span></div>
+    <br><span class="muted small"><?= SOURCE_LABEL[$kind][0] ?> <?= h(SOURCE_LABEL[$kind][1]) ?> · <?= h($S['set_title']) ?> · <?= h($S['class_name']) ?> · <?= h(substr($S['started_at'], 0, 16)) ?></span></div>
 </div>
 
 <?php if (!$wrong): ?>
-  <div class="empty">Bạn đã trả lời đúng tất cả các câu. Xem lại mục <a href="right.php">Câu đúng</a> để ghi nhớ lâu hơn.</div>
+  <div class="empty">🎉 Bạn đã trả lời đúng tất cả các câu. Xem lại mục <a href="right.php">Câu đúng</a> để ghi nhớ lâu hơn.
+    <?php if ($kind === 'practice'): ?><br><a class="btn" href="review.php?a=<?= $rid ?>">Xem lại lượt luyện tập</a>
+    <?php elseif ($kind === 'homework'): ?><br><a class="btn" href="homework.php?id=<?= $rid ?>">Xem lại bài tập</a><?php endif; ?></div>
 <?php else: ?>
 <div class="cols">
 <section class="card">
@@ -87,7 +92,7 @@ $ms = mastery($code, array_column($wrong, 'question_id'));
     <div class="topic-row"><span><?= h(REASONS[$k]) ?></span><span class="muted"><?= $c ?> câu</span></div>
   <?php endforeach; ?>
   <?php if ($no_reason): ?>
-    <p class="muted small"><?= $no_reason ?> câu chưa ghi lý do. <a href="wrong.php?session=<?= $sid ?>">Ghi lý do cho từng câu sai →</a><br>Ghi lý do giúp phần “bài học rút ra” bên dưới cụ thể hơn.</p>
+    <p class="muted small"><?= $no_reason ?> câu chưa ghi lý do. <a href="wrong.php<?= $kind === 'remote' ? '?session=' . $rid : '' ?>">Ghi lý do cho từng câu sai →</a><br>Ghi lý do giúp phần “bài học rút ra” bên dưới cụ thể hơn.</p>
   <?php endif; ?>
 </section>
 </div>
@@ -120,8 +125,16 @@ $ms = mastery($code, array_column($wrong, 'question_id'));
     </div>
   <?php endforeach; ?>
   <div class="row">
-    <form method="post" action="start.php"><?= csrf_field() ?><input type="hidden" name="src" value="wrong"><input type="hidden" name="session" value="<?= $sid ?>"><button>Ôn lại tất cả câu sai của bài này</button></form>
-    <form method="post" action="start.php"><?= csrf_field() ?><input type="hidden" name="src" value="session"><input type="hidden" name="sid" value="<?= $sid ?>"><button>Làm lại cả bài</button></form>
+    <?php if ($kind === 'remote'): ?>
+    <form method="post" action="start.php"><?= csrf_field() ?><input type="hidden" name="src" value="wrong"><input type="hidden" name="session" value="<?= $rid ?>"><button>Ôn lại tất cả câu sai của bài này</button></form>
+    <form method="post" action="start.php"><?= csrf_field() ?><input type="hidden" name="src" value="session"><input type="hidden" name="sid" value="<?= $rid ?>"><button>Làm lại cả bài</button></form>
+    <?php elseif ($kind === 'practice'): ?>
+    <form method="post" action="start.php"><?= csrf_field() ?><input type="hidden" name="src" value="retry"><input type="hidden" name="attempt" value="<?= $rid ?>"><button>Ôn lại câu sai của lượt này</button></form>
+    <a class="btn" href="review.php?a=<?= $rid ?>">Xem lại lượt luyện tập</a>
+    <?php else: ?>
+    <form method="post" action="start.php"><?= csrf_field() ?><input type="hidden" name="src" value="wrong"><input type="hidden" name="class_id" value="<?= (int)$S['class_id'] ?>"><button>Ôn lại các câu sai</button></form>
+    <a class="btn" href="homework.php?id=<?= $rid ?>">Xem lại bài tập</a>
+    <?php endif; ?>
   </div>
 </section>
 <?php endif; ?>

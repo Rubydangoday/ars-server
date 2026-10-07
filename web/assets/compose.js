@@ -8,6 +8,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ORIGIN = { ai: 'AI gợi ý', word: 'Word', excel: 'Excel', text: 'Văn bản', manual: 'Soạn tay' };
   const PURPOSE = { test: 'bài kiểm tra', practice: 'bài ôn tập' };
+  const _ = (x) => (window.ARS_T ? window.ARS_T(x) : x);
 
   async function api(url, fields, file) {
     const fd = new FormData();
@@ -30,7 +31,7 @@
       const sel = dst[p], keep = sel.value || String(C.pre[p] || '');
       const mine = C.sets.filter((s) => s.purpose === p);
       sel.innerHTML = '<option value="">— chọn bộ ' + PURPOSE[p] + ' —</option>'
-        + mine.map((s) => `<option value="${s.id}">${esc(s.title)} (${s.n} câu)</option>`).join('')
+        + mine.map((s) => `<option value="${s.id}">${esc(s.title)} (${s.n} ${_('câu')})</option>`).join('')
         + `<option value="new">＋ Tạo bộ ${PURPOSE[p]} mới…</option>`;
       sel.value = mine.some((s) => String(s.id) === keep) ? keep : (mine[0] ? String(mine[0].id) : '');
       sel.dataset.prev = sel.value;
@@ -55,7 +56,7 @@
       } catch (e) { alert(e.message); sel.value = sel.dataset.prev; }
     });
   }
-  function setCount(id, n) { const s = C.sets.find((x) => x.id === id); if (s) { s.n = n; const o = document.querySelector(`#dst-${s.purpose} option[value="${id}"]`); if (o) o.textContent = `${s.title} (${n} câu)`; } }
+  function setCount(id, n) { const s = C.sets.find((x) => x.id === id); if (s) { s.n = n; const o = document.querySelector(`#dst-${s.purpose} option[value="${id}"]`); if (o) o.textContent = `${s.title} (${n} ${_('câu')})`; } }
   function needTarget(p) {
     const v = dst[p].value;
     if (!v || v === 'new') { dst[p].focus(); dst[p].closest('label').animate([{ background: '#fff3d6' }, { background: 'transparent' }], 1200); alert('Chọn bộ ' + PURPOSE[p] + ' ở thanh phía trên trước.'); return null; }
@@ -118,7 +119,7 @@
       if (b.dataset.add) return addCards([el], b.dataset.add);
       const act = b.dataset.act;
       if (act === 'edit') { $('.edit-wrap', el).innerHTML = editHtml(el.q, uid); el.classList.add('editing'); }
-      if (act === 'done') { readEdit(el); el.classList.remove('editing'); $('.view', el).outerHTML = viewHtml(el.q, el.no); $('.edit-wrap', el).innerHTML = ''; }
+      if (act === 'done') { readEdit(el); el.classList.remove('editing'); $('.view', el).outerHTML = viewHtml(el.q, el.no); $('.edit-wrap', el).innerHTML = ''; window.ARSRenderMath?.(el); }
       if (act === 'addopt') { const box = $('.opts-edit', el); const n = box.children.length; if (n < 10) box.insertAdjacentHTML('beforeend', optRow(uid, n, '', false)); }
       if (act === 'delopt') { const box = $('.opts-edit', el); if (box.children.length > 2) box.lastElementChild.remove(); }
       if (act === 'drop') { el.classList.toggle('removed'); b.textContent = el.classList.contains('removed') ? 'Khôi phục' : 'Bỏ'; el.querySelectorAll('[data-add]').forEach((x) => { x.disabled = el.classList.contains('removed'); }); }
@@ -197,6 +198,7 @@
       const j = await api('api/qparse.php', fields, file);
       impRes.innerHTML = '';
       renderGroup(impRes, j.questions, j.warnings, 'từ ' + j.source);
+      window.ARSRenderMath?.(impRes);
     } catch (e) { impRes.innerHTML = `<ul class="warn-list"><li>${esc(e.message)}</li></ul>`; }
     if (btn) btn.disabled = false;
   }
@@ -208,54 +210,148 @@
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) runParse({}, f); });
 
-  // ------------------------------------------------------------ PHẢI: trợ lý AI
-  const chat = $('#ai-chat'), form = $('#ai-form'), promptEl = $('#ai-prompt');
-  document.querySelectorAll('#ai-form .chips button').forEach((b) => b.addEventListener('click', () => {
-    promptEl.value = (promptEl.value.trim() ? promptEl.value.trim() + '. ' : '') + b.dataset.p; promptEl.focus();
-  }));
-  promptEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) form.requestSubmit(); });
-  const bubble = (html, cls) => { const d = document.createElement('div'); d.className = 'bubble ' + (cls || ''); d.innerHTML = html; chat.appendChild(d); d.scrollIntoView({ behavior: 'smooth', block: 'end' }); return d; };
+  // ------------------------------------------------------------ PHẢI: trợ lý AI (soạn câu hỏi + hỏi đáp giảng dạy)
+  const chat = $('#ai-chat'), form = $('#ai-form'), promptEl = $('#ai-prompt'), sendBtn = $('#ai-go');
+  const welcome = $('#ai-empty').outerHTML;
+  let mode = 'gen', busy = false, asked = [], turns = [];
+  const PH = { gen: _('Mô tả câu hỏi cần soạn, ví dụ: 5 câu về các mức QoS của MQTT, có 1 câu tình huống'),
+               chat: _('Hỏi trợ lý giảng dạy: giáo án, cách giảng phần khó, rubric chấm, hoạt động trên lớp…') };
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.ai-mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    $('#ai-opts').classList.toggle('chat-mode', m === 'chat');
+    promptEl.placeholder = PH[m];
+  }
+  document.querySelectorAll('.ai-mode button').forEach((b) => b.addEventListener('click', () => { setMode(b.dataset.mode); promptEl.focus(); }));
+  $('#ai-reset').addEventListener('click', () => { if (busy) return; asked = []; turns = []; chat.innerHTML = welcome; bindCards(); promptEl.focus(); });
+  function bindCards() {
+    chat.querySelectorAll('.aw-card').forEach((c) => c.addEventListener('click', () => {
+      const q = JSON.parse(c.dataset.card);
+      setMode(q.mode);
+      if (q.n) $('#ai-n').value = String(q.n);
+      if (q.diff) $('#ai-diff').value = q.diff;
+      if (q.src) $('#ai-src').value = q.src;
+      submit(q.prompt);
+    }));
+  }
+  bindCards();
+  const autosize = () => { promptEl.style.height = 'auto'; promptEl.style.height = Math.min(160, promptEl.scrollHeight) + 'px'; };
+  promptEl.addEventListener('input', autosize);
+  promptEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); } });
+
+  // markdown rút gọn cho câu trả lời hỏi đáp (### tiêu đề, **đậm**, *nghiêng*, `mã`, danh sách, đoạn)
+  function md(src) {
+    const inline = (x) => x.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*(?!\s)(.+?)\*/g, '$1<i>$2</i>').replace(/`(.+?)`/g, '<code>$1</code>');
+    let out = '', list = null;
+    const close = () => { if (list) { out += `</${list}>`; list = null; } };
+    for (const raw of esc(src).split('\n')) {
+      const l = raw.trimEnd(); let m;
+      if ((m = l.match(/^#{1,4}\s+(.*)/))) { close(); out += `<h4>${inline(m[1])}</h4>`; }
+      else if ((m = l.match(/^\s*[-*•]\s+(.*)/))) { if (list !== 'ul') { close(); out += '<ul>'; list = 'ul'; } out += `<li>${inline(m[1])}</li>`; }
+      else if ((m = l.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== 'ol') { close(); out += '<ol>'; list = 'ol'; } out += `<li>${inline(m[1])}</li>`; }
+      else if (/^\s*\|.*\|\s*$/.test(l)) { close(); out += `<div class="md-row">${inline(l)}</div>`; }
+      else if (!l.trim()) close();
+      else { close(); out += `<p>${inline(l)}</p>`; }
+    }
+    close(); return out;
+  }
+  const math = (el) => { if (window.renderMathInElement) try { renderMathInElement(el, { delimiters: [{ left: '\\[', right: '\\]', display: true }, { left: '\\(', right: '\\)', display: false }, { left: '$$', right: '$$', display: true }], throwOnError: false, strict: 'ignore' }); } catch (e) {} };
+  function msg(role, html) {
+    $('#ai-empty')?.remove();
+    const d = document.createElement('div');
+    d.className = 'am ' + role;
+    d.innerHTML = role === 'me' ? `<div class="am-b">${html}</div>` : `<div class="am-ava">✨</div><div class="am-body">${html}</div>`;
+    chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+    return d;
+  }
+  const typing = () => msg('bot', `<div class="am-typing"><span></span><span></span><span></span><em>${mode === 'gen' ? _('Đang soạn câu hỏi… (có thể mất 10–60 giây)') : _('Đang suy nghĩ…')}</em></div>`);
+  function srcFields(src) {
+    const f = {};
+    if (src === 'left') f.source_text = $('#imp-text').value;
+    else if (src && src.startsWith('lesson:')) f.lesson_id = src.slice(7);
+    return f;
+  }
+
+  const FOLLOW = [
+    ['harder', '🔥 ' + _('Khó hơn'), 'Khó hơn lượt trước: vận dụng cao, nhiều bước suy luận', 'kho'],
+    ['easier', '🌱 ' + _('Dễ hơn'), 'Dễ hơn lượt trước: kiểm tra hiểu khái niệm cơ bản', 'de'],
+    ['scenario', '🎭 ' + _('Thêm tình huống'), 'Chuyển thành câu hỏi tình huống thực tế gắn với đời sống / công việc'],
+    ['distract', '🎯 ' + _('Phương án nhiễu tốt hơn'), 'Phương án nhiễu hợp lý hơn, dựa trên lỗi hiểu sai thường gặp, độ dài tương đương đáp án'],
+    ['more', '↻ ' + _('Câu khác'), 'Tạo các câu khác hẳn những câu đã gợi ý'],
+  ];
+  async function generate(req) {
+    busy = true; sendBtn.disabled = true;
+    const srcSel = $('#ai-src');
+    const srcName = req.src ? [...srcSel.options].find((o) => o.value === req.src)?.text || '' : _('không dùng tài liệu');
+    const diffName = [...$('#ai-diff').options].find((o) => o.value === req.difficulty)?.text || '';
+    msg('me', esc(req.prompt || _('(không có yêu cầu thêm)')) + `<small>${req.n} ${_('câu')} · ${req.n_options} ${_('lựa chọn')} · ${esc(diffName)} · ${esc(srcName)}</small>`);
+    const wait = typing(); const t0 = performance.now();
+    try {
+      const j = await api('api/ai.php', { task: 'generate', prompt: req.prompt, n: req.n, n_options: req.n_options, difficulty: req.difficulty, history: asked,
+        avoid_sets: [dst.test.value, dst.practice.value].filter((v) => /^\d+$/.test(v)).join(','), avoid_text: allStems(), ...srcFields(req.src) });
+      if (req.prompt) asked.push(req.prompt);
+      const body = wait.querySelector('.am-body');
+      body.innerHTML = `<div class="am-meta">${_('Đã soạn')} <b>${j.questions.length}</b> ${_('câu')} · ${esc(j.provider)} · ${((performance.now() - t0) / 1000).toFixed(1)} s</div>`
+        + (j.note ? `<div class="am-note">${esc(j.note)}</div>` : '') + `<div class="am-tip">${_('Xem lại, bấm Sửa nếu cần, rồi xác nhận từng câu.')}</div>`;
+      const g = renderGroup(body, j.questions.map((q) => ({ ...q, no: undefined })), [], _('AI gợi ý'));
+      g.querySelectorAll('.qc').forEach((c) => math(c));
+      const f = document.createElement('div'); f.className = 'am-follow';
+      f.innerHTML = FOLLOW.map(([k, label]) => `<button type="button" class="chip" data-f="${k}">${label}</button>`).join('');
+      f.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-f]'); if (!b || busy) return;
+        const [, label, text, diff] = FOLLOW.find((x) => x[0] === b.dataset.f);
+        generate({ ...req, prompt: text, difficulty: diff || req.difficulty, label });
+      });
+      body.appendChild(f);
+    } catch (e) {
+      wait.querySelector('.am-body').innerHTML = `<div class="am-err">⚠ ${esc(e.message)}</div>`;
+    }
+    chat.scrollTop = chat.scrollHeight;
+    busy = false; sendBtn.disabled = false;
+  }
+  async function ask(text, src) {
+    busy = true; sendBtn.disabled = true;
+    msg('me', esc(text).replace(/\n/g, '<br>'));
+    const wait = typing();
+    try {
+      const j = await api('api/ai.php', { task: 'chat', prompt: text, turns, ...srcFields(src) });
+      turns.push({ role: 'user', content: text }, { role: 'assistant', content: j.text });
+      turns = turns.slice(-12);
+      const body = wait.querySelector('.am-body');
+      body.innerHTML = `<div class="am-md">${md(j.text)}</div><div class="am-acts"><button type="button" class="chip" data-a="copy">📋 ${_('Sao chép')}</button>`
+        + `<button type="button" class="chip" data-a="again">↻ ${_('Trả lời khác')}</button><button type="button" class="chip" data-a="toq">🧩 ${_('Soạn câu hỏi từ nội dung này')}</button></div>`;
+      math(body);
+      body.querySelector('.am-acts').addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-a]'); if (!b || busy) return;
+        if (b.dataset.a === 'copy') { try { await navigator.clipboard.writeText(j.text); b.textContent = '✅'; } catch (er) { alert(er.message); } }
+        if (b.dataset.a === 'again') ask(_('Trả lời lại theo cách khác, cụ thể và thực tế hơn.'), src);
+        if (b.dataset.a === 'toq') { setMode('gen'); generate({ prompt: 'Soạn câu hỏi trắc nghiệm kiểm tra các ý trong nội dung sau:\n' + j.text.slice(0, 3000), n: +$('#ai-n').value, n_options: +$('#ai-nopt').value, difficulty: $('#ai-diff').value, src: '' }); }
+      });
+    } catch (e) {
+      wait.querySelector('.am-body').innerHTML = `<div class="am-err">⚠ ${esc(e.message)}</div>`;
+    }
+    chat.scrollTop = chat.scrollHeight;
+    busy = false; sendBtn.disabled = false;
+  }
+  function submit(text) {
+    if (busy) return;
+    text = (text ?? promptEl.value).trim();
+    const src = $('#ai-src').value;
+    if (mode === 'chat') { if (!text) { promptEl.focus(); return; } ask(text, src); }
+    else {
+      if (!text && !src) { promptEl.focus(); promptEl.placeholder = _('Nhập yêu cầu hoặc chọn nguồn tài liệu…'); return; }
+      generate({ prompt: text, n: +$('#ai-n').value, n_options: +$('#ai-nopt').value, difficulty: $('#ai-diff').value, src });
+    }
+    promptEl.value = ''; autosize();
+  }
+  form.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
   function allStems() { return [...document.querySelectorAll('#ai-chat .qc')].map((c) => c.q.content).slice(-40); }
 
-  async function generate(req) {
-    $('#ai-empty')?.remove();
-    const srcSel = $('#ai-src');
-    const srcName = srcSel.value ? srcSel.options[srcSel.selectedIndex].text : 'không dùng tài liệu';
-    bubble(esc(req.prompt || '(không có yêu cầu thêm)') + `<small>${req.n} câu · ${req.n_options} lựa chọn · ${esc($('#ai-diff').options[$('#ai-diff').selectedIndex].text)} · nguồn: ${esc(srcName)}</small>`);
-    const wait = bubble('<span class="spinner"></span>Đang soạn câu hỏi… (có thể mất 10–60 giây)', 'bot');
-    const btn = $('#ai-go'); btn.disabled = true;
-    const t0 = performance.now();
-    try {
-      const fields = { task: 'generate', prompt: req.prompt, n: req.n, n_options: req.n_options, difficulty: req.difficulty,
-        avoid_sets: [dst.test.value, dst.practice.value].filter((v) => /^\d+$/.test(v)).join(','), avoid_text: allStems() };
-      if (req.src === 'left') fields.source_text = $('#imp-text').value;
-      else if (req.src.startsWith('lesson:')) fields.lesson_id = req.src.slice(7);
-      const j = await api('api/ai.php', fields);
-      wait.innerHTML = `Đã soạn <b>${j.questions.length}</b> câu · ${esc(j.provider)} · ${((performance.now() - t0) / 1000).toFixed(1)} s`
-        + (j.note ? `<small>${esc(j.note)}</small>` : '') + '<small>Xem lại, bấm Sửa nếu cần, rồi xác nhận từng câu.</small>';
-      const g = renderGroup(chat, j.questions.map((q) => ({ ...q, no: undefined })), [], 'AI gợi ý');
-      const more = document.createElement('div');
-      more.className = 'row';
-      more.innerHTML = '<button type="button" class="small ghost">↻ Tạo thêm câu khác</button>';
-      more.firstChild.addEventListener('click', () => generate({ ...req, prompt: req.prompt + (req.prompt ? '. ' : '') + 'Tạo các câu khác với những câu đã gợi ý.' }));
-      g.appendChild(more);
-    } catch (e) {
-      wait.className = 'bubble bot err'; wait.textContent = e.message;
-    }
-    btn.disabled = false;
-  }
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const req = { prompt: promptEl.value.trim(), n: +$('#ai-n').value, n_options: +$('#ai-nopt').value, difficulty: $('#ai-diff').value, src: $('#ai-src').value };
-    if (!req.prompt && !req.src) { promptEl.focus(); promptEl.placeholder = 'Nhập yêu cầu hoặc chọn nguồn tài liệu…'; return; }
-    promptEl.value = '';
-    generate(req);
-  });
-
+  setMode('gen');
   fillTargets();
   // mở từ trang buổi học ("Soạn bằng AI từ bài giảng"): tự tạo 5 câu củng cố
   if (new URLSearchParams(location.search).get('auto') === '1' && $('#ai-src').value) {
-    history.replaceState(null, '', location.pathname + '?lesson=' + C.pre.lesson);
+    window.history.replaceState(null, '', location.pathname + '?lesson=' + C.pre.lesson);
     generate({ prompt: 'Câu hỏi củng cố cuối buổi: ngắn gọn, bám sát kiến thức trọng tâm của buổi học', n: 5, n_options: 4, difficulty: 'mix', src: $('#ai-src').value });
   }
 })();

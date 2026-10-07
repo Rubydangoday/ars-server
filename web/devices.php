@@ -18,7 +18,7 @@ function ago(?int $s): string {
 }
 page_head('Thiết bị', 'devices.php');
 ?>
-<h1>Thiết bị</h1><p><a class="btn" href="mapping.php">Ghép Remote với học sinh</a></p>
+<div class="page-head"><div><h1>📡 Thiết bị</h1><p class="muted">Gateway và Remote đang hoạt động: pin, sóng, số gói nhận được. Ghép Remote với học sinh để chống bấm hộ.</p></div><a class="btn primary" href="mapping.php">🔗 Ghép Remote với học sinh</a></div>
 <section class="card">
   <h2>Gateway</h2>
   <?php if (!$gws): ?><p class="muted">Chưa nhận được trạng thái gateway nào. Kiểm tra bridge.py đang chạy và ingest.py đã kết nối MQTT.</p><?php else: ?>

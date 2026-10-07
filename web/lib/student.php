@@ -197,38 +197,49 @@ function stu_stats(string $code): array {
 
 // ---------------------------------------------------------------- giao diện học sinh
 const STU_TABS = [
-    'homework.php' => ['🏡','Bài tập về nhà','orange'],
-    'home.php' => ['🏠', 'Tổng quan', 'pink'], 'lectures.php' => ['📚', 'Bài giảng', 'blue'], 'tutor.php' => ['🦉', 'Trợ lý AI', 'violet'],
-    'practice.php' => ['🎯', 'Ôn tập', 'orange'], 'wrong.php' => ['❌', 'Câu sai', 'red'], 'right.php' => ['✅', 'Câu đúng', 'green'],
-    'lessons.php' => ['📝', 'Rút kinh nghiệm', 'teal'], 'rewards.php' => ['🏆', 'Thi đua', 'orange'],
+    'home.php' => ['🏠', 'Tổng quan', 'pink'], 'homework.php' => ['🏡', 'Bài tập về nhà', 'orange'], 'lectures.php' => ['📚', 'Bài giảng', 'blue'],
+    'practice.php' => ['🎯', 'Ôn tập', 'orange'], 'tutor.php' => ['🦉', 'Trợ lý AI', 'violet'],
+    'wrong.php' => ['❌', 'Câu sai', 'red'], 'right.php' => ['✅', 'Câu đúng', 'green'], 'lessons.php' => ['📝', 'Rút kinh nghiệm', 'teal'],
+    'rewards.php' => ['🏆', 'Thi đua', 'orange'],
 ];
+const STU_GROUPS = ['Học tập' => ['home.php', 'homework.php', 'lectures.php', 'practice.php', 'tutor.php'], 'Kết quả của tôi' => ['wrong.php', 'right.php', 'lessons.php'], 'Cộng đồng' => ['rewards.php']];
 function student_head(string $title, string $active = ''): void {
     $s = stu();
-    echo '<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-       . '<meta name="csrf" content="' . h(csrf_token()) . '"><meta name="theme-color" content="#ec4899">'
-       . '<title>' . h($title) . ' — ARS học sinh</title><link rel="stylesheet" href="../assets/style.css"><link rel="stylesheet" href="../assets/student.css">'.str_replace('assets/','../assets/',math_assets()).'</head>'
-       . '<body class="stu' . ($s && empty($s['must_change']) ? '' : ' stu-bare') . '"' . fx_attr() . '>';
-    if ($s && empty($s['must_change'])) {
+    $app = $s && empty($s['must_change']);
+    echo '<!doctype html><html lang="' . lang() . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+       . '<meta name="csrf" content="' . h(csrf_token()) . '"><meta name="theme-color" content="#7c3aed">'
+       . '<title>' . h($title) . ' — ARS học sinh</title>' . str_replace('<meta name="theme-color" content="#1f6feb">', '', favicon_links('../assets/')) . '<link rel="stylesheet" href="../assets/' . av('style.css') . '"><link rel="stylesheet" href="../assets/' . av('student.css') . '">'.str_replace('assets/','../assets/',math_assets()) . i18n_js('../assets/') . gtranslate_script('../assets/') . '</head>'
+       . '<body class="stu' . ($app ? ' stu-app-on' : ' stu-bare') . '"' . fx_attr() . '>';
+    if ($app) {
         $st = stu_stats($s['code']);
-        if($st['badge'])echo '<div class="flash ok">🏅 '.h($st['badge']).'</div>';
         $first = trim(strrchr(' ' . $s['full_name'], ' '));
         $ava = qv('SELECT avatar FROM student_profiles WHERE student_code=?', [$s['code']]);   // avatar đổi bằng điểm thi đua
-        echo '<header class="stu-top"><a class="brand" href="home.php"><span class="logo">🦉</span><span>ARS<small>Học mà vui</small></span></a>'
+        echo '<div class="stu-app"><aside class="stu-side"><a class="brand" href="home.php"><span class="logo">🦉</span><span>ARS<small>Học mà vui</small></span></a><nav class="tabs stu-nav" aria-label="Điều hướng">';
+        foreach (STU_GROUPS as $g => $pages) {
+            echo '<h6>' . h($g) . '</h6>';
+            foreach ($pages as $href) { [$ico, $label, $color] = STU_TABS[$href]; echo '<a href="' . $href . '" class="c-' . $color . ($active === $href ? ' on' : '') . '"><i>' . $ico . '</i><span>' . $label . '</span></a>'; }
+        }
+        echo '</nav><div class="stu-lvcard"><div class="lv-h"><b>Cấp ' . $st['level'] . '</b><span>' . $st['xp'] . ' ⭐</span></div><div class="lv-bar"><i style="width:' . (int)$st['lv_pct'] . '%"></i></div>'
+           . '<small>Còn ' . (100 - (int)$st['lv_pct']) . ' điểm để lên cấp ' . ($st['level'] + 1) . '</small></div></aside><div class="stu-body">'
+           . '<header class="stu-top"><a class="brand mobile-only" href="home.php"><span class="logo">🦉</span><span>ARS</span></a><div class="stu-hi"><b>' . h($title) . '</b></div>'
            . '<div class="badges"><span class="b-xp" title="Điểm thưởng">⭐ ' . $st['xp'] . '</span>'
            . '<span class="b-fire' . ($st['today'] ? ' on' : '') . '" title="Chuỗi ngày học liên tiếp">🔥 ' . $st['streak'] . '</span>'
            . '<span class="b-lv" title="Cấp độ">Cấp ' . $st['level'] . '</span></div>'
-           . '<details class="me"><summary><span class="avatar">' . h($ava ?: mb_strtoupper(mb_substr($first, 0, 1))) . '</span></summary>'
+           . lang_switch('stu-lang') . '<details class="me"><summary><span class="avatar">' . h($ava ?: mb_strtoupper(mb_substr($first, 0, 1))) . '</span></summary>'
            . '<div class="menu"><b>' . h($s['full_name']) . '</b><span class="muted small">MSSV ' . h($s['code']) . '</span>'
-           . '<a href="account.php">🔑 Đổi mật khẩu</a><button type="button" class="link" data-sound-toggle>🔊 Âm thanh</button><a href="logout.php">🚪 Đăng xuất</a></div></details></header><nav class="tabs">';
-        foreach (STU_TABS as $href => [$ico, $label, $color]) echo '<a href="' . $href . '" class="c-' . $color . ($active === $href ? ' on' : '') . '"><i>' . $ico . '</i>' . $label . '</a>';
-        echo '</nav>';
+           . '<a href="account.php">🔑 Đổi mật khẩu</a><button type="button" class="link" data-sound-toggle>🔊 Âm thanh</button><a href="logout.php">🚪 Đăng xuất</a></div></details></header>';
+        if ($st['badge'] && empty($_COOKIE['ars_badge_seen_' . md5($st['badge'])])) echo '<div class="stu-toast" data-badge="' . h(md5($st['badge'])) . '">🏅 <span>Huy hiệu mới: <b>' . h($st['badge']) . '</b></span><button type="button" aria-label="Đóng">✕</button></div>';
     }
+    else echo '<div class="stu-lang-float">' . lang_switch('stu-lang') . '</div>';   // trang đăng nhập / đăng ký
     echo '<main>';
     foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h($m) . '</div>';
     unset($_SESSION['flash']);
-    if ($s && empty($s['must_change'])) echo oauth_pending_prompt('student', '../');
+    if ($app) echo oauth_pending_prompt('student', '../');
 }
-function student_foot(): void { echo '</main></body></html>'; }
+function student_foot(): void {
+    echo '</main>' . (stu() && empty(stu()['must_change']) ? '</div></div>' : '')
+       . '<script>document.querySelectorAll(".stu-toast button").forEach(b=>b.addEventListener("click",()=>{const t=b.parentElement;document.cookie="ars_badge_seen_"+t.dataset.badge+"=1;path=/;max-age=31536000";t.remove()}))</script></body></html>';
+}
 
 /** Thẻ một câu hỏi kiểu "xem lại bài" (Moodle review): chữ đã chọn, đáp án đúng, giải thích. */
 function question_card(array $q, ?string $mine, array $opt = []): string {

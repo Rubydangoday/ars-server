@@ -57,7 +57,7 @@ post(t,grade,{'action':'release','submission':sub});expect('Làm tốt.' in page
 # Invalid AI offline must not publish a score
 r=post(t,grade,{'action':'ai','answer_id':forms[1].select_one('[name=answer_id]')['value'],'submission':sub});expect('Ollama' in r.text,'Offline AI grading blocked clearly')
 # Parent token one-use and class-scoped access
-r=post(t,'family.php?class='+str(d['class']),{'action':'invite','student_code':d['code'],'class_id':d['class']});token=BeautifulSoup(r.text,'html.parser').select_one('code').text
+r=post(t,'family.php?class='+str(d['class']),{'action':'invite','student_code':d['code'],'class_id':d['class']});so=BeautifulSoup(r.text,'html.parser');token=so.select_one('.invite-once .io-code').text;expect(re.fullmatch(r'[A-Z2-9]{4}-[A-Z2-9]{4}',token) and so.select_one('.invite-once code.lb-url').text.endswith('/parent/index.php?invite='+token) and so.select_one('.invite-once [data-qr-inline]'),'Invite shows short code, prefilled link and QR')
 p=requests.Session();post(p,'parent/index.php',{'action':'register','username':d['prefix']+'_parent','password':d['password'],'full_name':'Phụ huynh kiểm thử','invite':token});post(p,'parent/index.php',{'action':'login','username':d['prefix']+'_parent','password':d['password']});expect('Học sinh kiểm thử' in page(p,'parent/home.php').text,'Linked parent sees child progress')
 p2=requests.Session();r=post(p2,'parent/index.php',{'action':'register','username':d['prefix']+'_parent2','password':d['password'],'full_name':'Khác','invite':token});expect('đã dùng' in r.text,'Parent invite cannot be reused')
 # Grade workbook and projector state; correct hidden until teacher reveals

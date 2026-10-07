@@ -8,9 +8,9 @@ if($_SERVER['REQUEST_METHOD']==='POST')try{
  if(!preg_match('/^[A-Za-z0-9_.-]{3,50}$/',$user))throw new RuntimeException(t('Tên đăng nhập: 3–50 ký tự chữ/số.'));
  if($act==='login'){$p=q1('SELECT * FROM parents WHERE username=?',[$user]);if(!$p||!password_verify($pass,$p['password_hash'])){usleep(400000);throw new RuntimeException(t('Thông tin đăng nhập không đúng.'));}session_regenerate_id(true);$_SESSION['parent']=['id'=>$p['id'],'full_name'=>$p['full_name']];apply_user_lang($p['lang']??null);redirect('home.php');}
  if($act==='register'){
-  if(strlen($pass)<10)throw new RuntimeException(t('Mật khẩu tối thiểu 10 ký tự.'));$token=trim($_POST['invite']??'');if(!preg_match('/^[a-f0-9]{32}$/',$token))throw new RuntimeException(t('Mã mời không đúng.'));
-  db()->beginTransaction();$i=q1('SELECT * FROM parent_invites WHERE token_hash=? AND used_at IS NULL AND expires_at>NOW() FOR UPDATE',[hash('sha256',$token)]);
-  if(!$i||!qv('SELECT 1 FROM students WHERE class_id=? AND student_code=?',[$i['class_id'],$i['student_code']]))throw new RuntimeException(t('Mã mời đã hết hạn hoặc đã dùng.'));
+  if(strlen($pass)<10)throw new RuntimeException(t('Mật khẩu tối thiểu 10 ký tự.'));$hash=parent_invite_hash((string)($_POST['invite']??''));
+  db()->beginTransaction();$i=q1('SELECT * FROM parent_invites WHERE token_hash=? AND used_at IS NULL AND expires_at>NOW() FOR UPDATE',[$hash]);
+  if(!$i||!qv('SELECT 1 FROM students WHERE class_id=? AND student_code=?',[$i['class_id'],$i['student_code']])){parent_invite_fail();throw new RuntimeException(t('Mã mời đã hết hạn hoặc đã dùng.'));}
   q('INSERT INTO parents(username,full_name,password_hash) VALUES(?,?,?)',[$user,required_text('full_name',100),password_hash($pass,PASSWORD_DEFAULT)]);$pid=(int)db()->lastInsertId();
   q('INSERT INTO parent_links(parent_id,student_code,class_id) VALUES(?,?,?)',[$pid,$i['student_code'],$i['class_id']]);q('UPDATE parent_invites SET used_at=NOW() WHERE id=?',[$i['id']]);db()->commit();
   if($pending&&($n=oauth_attach_pending('parent',(string)$pid))){session_regenerate_id(true);$_SESSION['parent']=['id'=>$pid,'full_name'=>trim($_POST['full_name'])];flash(t('Đã tạo tài khoản. Lần sau bấm “Đăng nhập với {p}”.',['p'=>$n]));redirect('home.php');}
@@ -28,7 +28,7 @@ if($tab==='login'){
  // Một form: nút "Tạo tài khoản" đứng trước trong DOM (phím Enter), nút Google/Facebook gửi sang ../oauth.php bằng formaction.
  if($pending)echo oauth_pending_banner($pending,'../');   // ngoài form đăng ký: form "Huỷ" không được lồng
  echo '<form method="post" class="stack reg-form">'.csrf_field().'<input type="hidden" name="for" value="parent"><input type="hidden" name="mode" value="register">'
-   .'<label style="order:0">'.te('Mã mời').'<input name="invite" value="'.h($_POST['invite']??$_GET['invite']??'').'" required autocomplete="off" placeholder="'.te('32 ký tự thầy cô gửi').'"></label>'
+   .'<label style="order:0">'.te('Mã mời').'<input name="invite" value="'.h($_POST['invite']??$_GET['invite']??'').'" required autocomplete="off" placeholder="'.te('VD: K7PM-3QXA').'"></label>'
    .'<label style="order:3">'.te('Họ tên').'<input name="full_name" placeholder="'.te('Nguyễn Thị B').'" value="'.h($_POST['full_name']??($pending['name']??'')).'"></label>'
    .($pending?'':'<label style="order:3">'.te('Tên đăng nhập').'<input name="username" autocomplete="username" placeholder="'.te('3–50 ký tự, không dấu').'" value="'.h($_POST['username']??'').'"></label><label style="order:3">'.te('Mật khẩu (10 ký tự trở lên)').'<input type="password" name="password" minlength="10" autocomplete="new-password"></label>')
    .'<button class="primary" name="action" value="register" style="order:4">'.te('Tạo tài khoản').'</button>'.($pending?'<div style="display:none">':'<div class="oauth" style="order:1;margin:0">');

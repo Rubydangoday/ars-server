@@ -162,7 +162,7 @@ try:
     # ---- phụ huynh: đăng ký bằng Google + mã mời
     def invite():
         r = post(t1, 'family.php?class=%d' % cls, {'action': 'invite', 'student_code': d['code'], 'class_id': cls})
-        return BeautifulSoup(r.text, 'html.parser').select_one('div.card code').text
+        return BeautifulSoup(r.text, 'html.parser').select_one('.invite-once .io-code').text
     n_parents = sql1('SELECT COUNT(*) n FROM parents')['n']
     r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': 'abc'}); expect('Mã mời không đúng' in flash(r), 'Register requires invite format')
     tok = invite(); NEXT['google'] = g('g-parent-1', 'ph@example.com', 'Phụ huynh Google')
@@ -172,7 +172,7 @@ try:
     r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': tok}); expect('hết hạn hoặc đã dùng' in flash(r), 'Invite single-use')
     expect(sql1('SELECT COUNT(*) n FROM parents')['n'] == n_parents + 1, 'No orphan parent on failed register')
     r = oauth(requests.Session(), 'parent/index.php', 'google', {}); expect(r.url.endswith('parent/home.php'), 'Parent logs in with Google')
-    expect('Gỡ liên kết' in par.get(BASE + 'parent/home.php').text, 'Parent manages linked account')
+    expect('Gỡ liên kết' in par.get(BASE + 'parent/home.php?tab=account').text, 'Parent manages linked account')
     tok2 = invite(); r = oauth(requests.Session(), 'parent/index.php?tab=register', 'google', {'invite': tok2})
     expect(sql1('SELECT COUNT(*) n FROM parents')['n'] == n_parents + 1 and r.url.endswith('parent/home.php'), 'Existing Google parent reuses account')
 

@@ -1,6 +1,19 @@
 <?php
 require __DIR__.'/../lib/lms.php';$s=require_student();$id=(int)($_GET['id']??0);
-if(!$id){student_head('Bài tập về nhà','homework.php');echo '<h1>Bài tập về nhà</h1>';foreach(qall('SELECT h.*, c.name AS class_name FROM homework h JOIN classes c ON c.id=h.class_id JOIN students st ON st.class_id=c.id WHERE st.student_code=? AND h.published=1 ORDER BY h.id DESC',[$s['code']]) as $r)echo '<article class="card"><a href="homework.php?id='.$r['id'].'">'.h($r['title']).'</a> · '.h($r['class_name']).'<p>Hạn nộp: '.h($r['due_at']??'không giới hạn').'</p></article>';student_foot();exit;}
+if(!$id){
+ student_head('Bài tập về nhà','homework.php');
+ $rows=qall('SELECT h.*, c.name AS class_name, s.submitted_at, s.released, s.id AS sid, (SELECT COUNT(*) FROM homework_questions q WHERE q.homework_id=h.id) nq FROM homework h JOIN classes c ON c.id=h.class_id JOIN students st ON st.class_id=c.id AND st.student_code=? LEFT JOIN homework_submissions s ON s.homework_id=h.id AND s.student_code=? WHERE h.published=1 ORDER BY s.submitted_at IS NOT NULL, h.due_at IS NULL, h.due_at, h.id DESC',[$s['code'],$s['code']]);
+ echo '<div class="page-head"><div><h1>🏡 Bài tập về nhà</h1><p class="muted">Làm bài ngay trên điện thoại: trắc nghiệm, tự luận, vẽ hoặc ghi âm. Nhớ bấm <b>Nộp bài</b> trước hạn nhé!</p></div></div>';
+ if(!$rows)echo '<div class="card">'.ui_empty('📭','Chưa có bài tập nào','Khi thầy cô giao bài, bài sẽ hiện ở đây.').'</div>';
+ echo '<div class="hw-cards">';
+ foreach($rows as $r){$exp=$r['due_at']&&strtotime($r['due_at'])<time();$st=$r['submitted_at']?($r['released']?'graded':'done'):($exp?'late':'todo');
+  $score=$st==='graded'?q1('SELECT SUM(a.score) sc,SUM(hq.max_score) mx FROM homework_answers a JOIN homework_questions hq ON hq.id=a.hw_question_id WHERE a.submission_id=?',[$r['sid']]):null;
+  echo '<a class="hw-card st-'.$st.'" href="homework.php?id='.$r['id'].'"><div class="hw-card-top"><span class="ui-ico tone-'.['todo'=>'orange','done'=>'blue','graded'=>'green','late'=>'red'][$st].'">'.['todo'=>'📝','done'=>'📬','graded'=>'🏅','late'=>'⌛'][$st].'</span>'
+   .['todo'=>'<span class="tag warn">Chưa nộp</span>','done'=>'<span class="tag info">Đã nộp · chờ chấm</span>','graded'=>'<span class="tag ok">Đã có điểm</span>','late'=>'<span class="tag bad">Hết hạn</span>'][$st].'</div>'
+   .'<h3>'.h($r['title']).'</h3><p class="muted small">'.h($r['class_name']).' · '.(int)$r['nq'].' câu</p>'
+   .'<div class="hw-card-foot"><span>'.($r['due_at']?'⏰ '.h(date('d/m/Y H:i',strtotime($r['due_at']))):'⏰ Không giới hạn').'</span>'
+   .($score&&$score['mx']?ui_score((float)$score['sc'],(float)$score['mx']):'<span class="hw-go">'.($st==='todo'?'Làm bài →':'Xem →').'</span>').'</div></a>';}
+ echo '</div>';student_foot();exit;}
 $h=student_homework($s['code'],$id);
 $sub=q1('SELECT * FROM homework_submissions WHERE homework_id=? AND student_code=?',[$id,$s['code']]);
 $questions=qall('SELECT * FROM homework_questions WHERE homework_id=? ORDER BY ord',[$id]);
@@ -38,4 +51,4 @@ foreach($questions as $r){$key=$r['id'];$a=$answers[$key]??[];
  echo '</article>';
 }echo '</fieldset>';if(!$locked)echo '<button name="action" value="save">Lưu nháp</button> <button class="primary" name="action" value="submit" onclick="return confirm(\'Nộp bài? Sau đó không thể sửa.\')">Nộp bài</button>';echo '</form>';
 foreach($questions as $r){$a=$answers[$r['id']]??[];if(!empty($a['file_store']))echo '<p>Tệp câu '.$r['ord'].': <a href="../lms_file.php?answer='.$a['id'].'" target="_blank" rel="noopener">Xem tệp đã lưu</a></p>';if(!empty($sub['released']))echo '<div class="card">Câu '.$r['ord'].': '.($a['score']!==null?h($a['score']).'/'.h($r['max_score']):'chưa chấm').'<p>'.nl2br(h($a['feedback']??'')).'</p></div>';}
-echo '<script src="../assets/capture.js"></script>';student_foot();
+echo '<script src="../assets/' . av('capture.js') . '"></script>';student_foot();

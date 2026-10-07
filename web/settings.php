@@ -25,7 +25,7 @@ if ($act === 'ai') {
     $p = $_POST['provider'] ?? 'offline';
     if (!isset(AI_PROVIDERS[$p])) $p = 'offline';
     setting_set('ai_provider', $p);
-    foreach (['anthropic', 'openai'] as $x) {
+    foreach (['anthropic', 'gemini', 'openai'] as $x) {
         $k = trim($_POST['key_' . $x] ?? '');
         if ($k !== '' && !preg_match('/^•+$/u', $k)) setting_set('ai_key_' . $x, $k);        // ô để trống = giữ key cũ
         if (isset($_POST['clear_' . $x])) setting_set('ai_key_' . $x, null);
@@ -72,6 +72,7 @@ if ($act === 'oauth') {
 if ($act === 'general') {
     setting_set('org_name', mb_substr(trim($_POST['org_name'] ?? ''), 0, 80) ?: null);
     setting_set('privacy_contact', mb_substr(trim($_POST['privacy_contact'] ?? ''), 0, 120) ?: null);
+    setting_set('machine_translate', isset($_POST['machine_translate']) ? '1' : '0');
     flash('Đã lưu.');
     redirect('settings.php#general');
 }
@@ -85,7 +86,7 @@ $used = 0; foreach (glob($dir . '/*') ?: [] as $f) $used += (int)@filesize($f);
 
 page_head('Cài đặt', 'settings.php');
 ?>
-<div class="page-head"><div><h1>Cài đặt</h1><p class="muted">Đường dẫn truy cập, kết nối clicker, trợ lý AI, tài khoản.<?= $admin ? '' : ' Một số mục do giáo viên quản trị server cài đặt.' ?></p></div></div>
+<div class="page-head"><div><h1>⚙️ Cài đặt</h1><p class="muted">Đường dẫn truy cập, kết nối clicker, trợ lý AI, tài khoản.<?= $admin ? '' : ' Một số mục do giáo viên quản trị server cài đặt.' ?></p></div></div>
 <div class="settings-grid">
   <nav class="settings-nav"><a href="#links">🔗 Đường dẫn</a><a href="#conn">📶 Kết nối clicker</a><?php if ($admin): ?><a href="#ai">✨ Trợ lý AI</a><a href="#tutor">🦉 Trợ lý học sinh</a><?php endif; ?><a href="#account">👤 Tài khoản</a><?php if ($admin): ?><a href="#oauth">🔐 Google / Facebook</a><?php endif; ?><?php if ($admin): ?><a href="#general">🏫 Thông tin chung</a><a href="teachers.php">👥 Giáo viên</a><?php endif; ?><a href="#system">🖥 Hệ thống</a></nav>
   <div>
@@ -99,6 +100,7 @@ page_head('Cài đặt', 'settings.php');
         <div class="radio-cards">
           <label><input type="radio" name="provider" value="offline" <?= $c['provider'] === 'offline' ? 'checked' : '' ?>><span><b>Cơ bản</b><small>Không cần Internet, không tốn phí. Tạo câu hỏi từ các câu định nghĩa trong bài giảng.</small></span></label>
           <label><input type="radio" name="provider" value="anthropic" <?= $c['provider'] === 'anthropic' ? 'checked' : '' ?>><span><b>Claude (Anthropic)</b><small>Chất lượng cao, đọc được bài giảng dài. Cần API key và Internet.</small></span></label>
+          <label><input type="radio" name="provider" value="gemini" <?= $c['provider'] === 'gemini' ? 'checked' : '' ?>><span><b>Google Gemini</b><small>Có gói miễn phí, dễ đăng ký nhất: chỉ cần tài khoản Google. Cần Internet.</small></span></label>
           <label><input type="radio" name="provider" value="openai" <?= $c['provider'] === 'openai' ? 'checked' : '' ?>><span><b>OpenAI / Ollama / LM Studio</b><small>API tương thích OpenAI. Dùng Ollama trên máy để chạy AI không cần Internet.</small></span></label>
         </div>
         <fieldset class="card" data-prov="anthropic" style="box-shadow:none"><legend class="small muted">Claude (Anthropic)</legend>
@@ -110,6 +112,17 @@ page_head('Cài đặt', 'settings.php');
           <div class="row"><label style="flex:1">Địa chỉ API (để trống = mặc định) <input name="base_anthropic" value="<?= h(setting('ai_base_anthropic', '')) ?>" placeholder="https://api.anthropic.com"></label>
             <?php if ($masked('anthropic')): ?><label class="check"><input type="checkbox" name="clear_anthropic"> Xoá key đã lưu</label><?php endif; ?></div>
           <p class="small muted" style="margin:0">Tạo key tại console.anthropic.com → API Keys. Key được lưu trong CSDL trên máy này, không hiển thị lại.</p>
+        </fieldset>
+        <fieldset class="card" data-prov="gemini" style="box-shadow:none"><legend class="small muted">Google Gemini</legend>
+          <div class="row">
+            <label style="flex:2">API key <input name="key_gemini" type="password" autocomplete="off" placeholder="<?= $masked('gemini') ?: 'AIza…' ?>"></label>
+            <label style="flex:1">Model <input name="model_gemini" list="m-gemini" value="<?= h(setting('ai_model_gemini', AI_PROVIDERS['gemini'][1])) ?>"></label>
+            <datalist id="m-gemini"><option value="gemini-2.5-flash"><option value="gemini-2.5-flash-lite"><option value="gemini-2.5-pro"></datalist>
+          </div>
+          <div class="row"><label style="flex:1">Địa chỉ API (để trống = mặc định) <input name="base_gemini" value="<?= h(setting('ai_base_gemini', '')) ?>" placeholder="https://generativelanguage.googleapis.com/v1beta/openai"></label>
+            <?php if ($masked('gemini')): ?><label class="check"><input type="checkbox" name="clear_gemini"> Xoá key đã lưu</label><?php endif; ?></div>
+          <p class="small muted" style="margin:0">Lấy key miễn phí: mở <b>aistudio.google.com</b> → đăng nhập Google → <b>Get API key</b> → <b>Create API key</b> → chép key dạng <code>AIza…</code> dán vào đây → Lưu → Kiểm tra kết nối.
+            Gói miễn phí giới hạn số lượt mỗi phút/ngày; Google có thể dùng nội dung gửi lên gói miễn phí để cải tiến sản phẩm.</p>
         </fieldset>
         <fieldset class="card" data-prov="openai" style="box-shadow:none"><legend class="small muted">OpenAI / Ollama / LM Studio</legend>
           <div class="row">
@@ -189,6 +202,7 @@ page_head('Cài đặt', 'settings.php');
       <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="action" value="general">
         <label style="flex:1">Tên trường / khoa (hiện ở thanh trên cùng) <input name="org_name" value="<?= h(setting('org_name', '')) ?>" placeholder="VD: Khoa Điện – Điện tử, HCMUTE"></label>
         <label style="flex:1">Email liên hệ quyền riêng tư <input name="privacy_contact" value="<?= h(setting('privacy_contact', '')) ?>" placeholder="VD: phongdaotao@truong.edu.vn"></label>
+        <label class="check" style="flex-basis:100%"><input type="checkbox" name="machine_translate" <?= machine_translate_on() ? 'checked' : '' ?>> Cho phép “Ngôn ngữ khác (Google Dịch)” ở nút chọn ngôn ngữ — dịch máy hơn 200 ngôn ngữ, cần Internet; nội dung trang được gửi tới Google khi người dùng chọn.</label>
         <button class="primary">Lưu</button>
       </form>
     </section>

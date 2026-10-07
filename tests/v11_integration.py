@@ -125,7 +125,7 @@ try:
         '("zalo_access_token","zalo-secret"),("zalo_template_id","T123"),("zalo_endpoint","http://127.0.0.1:8093/zalo"),'
         '("zalo_template_params","student_name=hs,correct=dung,total=tong")')
     par = login(p + '_parent', url='parent/index.php'); post(par, 'parent/index.php', {'action': 'login', 'username': p + '_parent', 'password': d['password']})
-    r = page(par, 'parent/home.php'); expect('Nhận kết quả buổi học' in r.text and 'Điểm thi đua' in r.text, 'Parent sees notify opt-in and points')
+    r = page(par, 'parent/home.php'); expect('Điểm thi đua' in r.text and 'Nhận kết quả buổi học' in page(par, 'parent/home.php?tab=account').text, 'Parent sees points and notify opt-in (account tab)')
     r = post(par, 'parent/home.php', {'action': 'notify', 'channel': 'sms', 'phone': '123'}); expect('10 số' in flash(r), 'Invalid phone rejected')
     post(par, 'parent/home.php', {'action': 'notify', 'channel': 'sms', 'phone': '+84 912 345 678'})
     expect(sql1('SELECT phone FROM parents WHERE username=%s', (p + '_parent',))['phone'] == '0912345678', 'Phone normalized')
@@ -161,7 +161,7 @@ try:
     r = page(t2, 'rewards.php?class=%d' % cc['id']); expect('Học sinh kiểm thử' in r.text, 'Cloud leaderboard from synced data')
     # Công bố muộn → đồng bộ lại + tự báo phụ huynh của lớp trên Cloud
     r = post(t2, 'family.php?class=%d' % cc['id'], {'action': 'invite', 'student_code': d['code'], 'class_id': cc['id']})
-    tok = BeautifulSoup(r.text, 'html.parser').select_one('div.card code').text
+    tok = BeautifulSoup(r.text, 'html.parser').select_one('.invite-once .io-code').text
     post(par, 'parent/home.php', {'invite': tok}); post(par, 'parent/home.php', {'action': 'notify', 'channel': 'sms', 'phone': '0912345678'})
     sql('REPLACE INTO settings (k, v) VALUES ("notify_auto","1")')
     post(t1, 'results.php?id=%d' % s4, {'action': 'release', 'on': 1})

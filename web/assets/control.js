@@ -18,7 +18,10 @@
   const head = document.querySelector('.ctl-head');
   addEventListener('scroll', () => head && head.classList.toggle('stuck', scrollY > 40), { passive: true });
   const bump = (el) => { el.classList.remove('fx-bump'); void el.offsetWidth; el.classList.add('fx-bump'); };
-  const setHTML = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };   // tránh vẽ lại khi không đổi (không mất cú bấm)
+  const MATH = { delimiters: [{ left: '$$', right: '$$', display: true }, { left: '\\[', right: '\\]', display: true }, { left: '\\(', right: '\\)', display: false }], throwOnError: false, strict: 'ignore' };
+  const setHTML = (el, html) => {                    // tránh vẽ lại khi không đổi (không mất cú bấm); vẽ công thức KaTeX sau mỗi lần đổi
+    if (el._h !== html) { el._h = html; el.innerHTML = html; if (window.renderMathInElement) try { renderMathInElement(el, MATH); } catch (e) { /* */ } }
+  };   // tránh vẽ lại khi không đổi (không mất cú bấm)
 
   async function act(action, extra = {}) {
     const body = new URLSearchParams({ csrf: CSRF, session: SID, action, ...extra });
@@ -52,7 +55,7 @@
     const max = Math.max(1, ...keys.map((k) => dist[k]));
     const tot = Math.max(1, keys.reduce((a, k) => a + dist[k], 0));
     return '<div class="hbars">' + keys.map((k) =>
-      `<div class="hb${k === correct ? ' ok' : ''}"><span class="k">${k}</span><span class="track"><span class="fill" style="width:${(dist[k] / max) * 100}%"></span></span><span class="v">${dist[k]} · ${Math.round(dist[k] * 100 / tot)}%</span></div>`).join('') + '</div>';
+      `<div class="hb${k === correct ? ' ok' : ''}"><span class="k" translate="no">${k}</span><span class="track"><span class="fill" style="width:${(dist[k] / max) * 100}%"></span></span><span class="v">${dist[k]} · ${Math.round(dist[k] * 100 / tot)}%</span></div>`).join('') + '</div>';
   }
 
   function render(s) {
@@ -97,7 +100,7 @@
       prevCount = c.n_answered;
       $('cur-logged').textContent = s.n_logged;
       setHTML($('cur-text'), esc(c.content).replace(/\n/g, '<br>') + '<ol class="opts">' +
-        Object.entries(c.options).map(([k, v]) => `<li class="${k === c.correct ? 'correct' : ''}"><b>${k}.</b> ${esc(v)}</li>`).join('') + '</ol>');
+        Object.entries(c.options).map(([k, v]) => `<li class="${k === c.correct ? 'correct' : ''}"><b translate="no">${k}.</b> ${esc(v)}</li>`).join('') + '</ol>');
       setHTML($('cur-bars'), bars(c.dist, c.correct));
       $('btn-open').hidden = c.status === 'open';
       $('btn-open').textContent = c.status === 'closed' ? T('Mở lại câu') : T('Mở câu');
@@ -116,7 +119,7 @@
       const cls = (x.answer ? 'ans' : x.present ? 'pres' : 'abs') + (fresh.has(x.seat) ? ' pulse' : '');
       const tip = `${x.seat}. ${x.name}` + (x.present ? `\nMAC ${x.mac}\n${T('Pin')} ${x.batt_mv ?? '?'} mV, RSSI ${x.rssi ?? '?'} dBm` : '\n' + T('chưa điểm danh')) + (x.answer ? '\n' + T('Đã chọn {a}', { a: x.answer }) : '');
       const rel = x.present && !ended ? ` data-act="release" data-seat="${x.seat}" data-confirm="${esc(T('Giải phóng ID {n} ({name})? Máy đang giữ ID này sẽ phải đăng nhập lại.', { n: x.seat, name: x.name }))}"` : '';
-      return `<div class="seat ${cls}${x.low_batt ? ' low' : ''}" title="${esc(tip)}"${rel}><b>${x.seat}</b><span>${esc(x.name.split(' ').slice(-1)[0])}</span>${x.answer ? `<i>${x.answer}</i>` : ''}</div>`;
+      return `<div class="seat ${cls}${x.low_batt ? ' low' : ''}" title="${esc(tip)}"${rel}><b translate="no">${x.seat}</b><span>${esc(x.name.split(' ').slice(-1)[0])}</span>${x.answer ? `<i translate="no">${x.answer}</i>` : ''}</div>`;
     }).join(''));
 
     setHTML($('warn'), s.warnings.length ? s.warnings.map((w) =>

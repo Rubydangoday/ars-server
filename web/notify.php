@@ -39,7 +39,7 @@ $retry = count(array_filter($rows, fn($r) => $r['status'] === 'pending' || ($r['
 $ch = notify_channels();
 page_head('Thông báo phụ huynh', 'notify.php');
 ?>
-<div class="page-head"><div><h1>Thông báo Zalo / SMS cho phụ huynh</h1>
+<div class="page-head"><div><h1>📨 Thông báo Zalo / SMS cho phụ huynh</h1>
   <p class="muted">Sau buổi học đã công bố kết quả, phụ huynh nhận tin như: “<?= h(strtr(setting('notify_template') ?: NOTIFY_DEFAULT_TEMPLATE, ['{ngay}' => date('d/m/Y'), '{hs}' => 'Nguyễn Văn A', '{dung}' => '8', '{tong}' => '10', '{mon}' => 'Toán', '{lop}' => '6A1'])) ?>”.
   Chỉ gửi cho phụ huynh đã tự nhập số điện thoại và chọn nhận tin trong cổng phụ huynh.</p></div>
   <div><a class="btn" href="sync.php">← Đồng bộ Cloud</a></div></div>

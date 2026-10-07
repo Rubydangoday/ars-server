@@ -6,7 +6,7 @@ $code = $me['code'];
 $classes = my_classes($code);
 student_head('Bài giảng', 'lectures.php');
 ?>
-<h1>Bài giảng</h1>
+<div class="page-head"><div><h1>📚 Bài giảng</h1><p class="muted">Xem lại bài giảng từng buổi và làm vài câu củng cố để nhớ lâu hơn.</p></div></div>
 <?php if (!$classes): ?><div class="empty">Bạn chưa có tên trong lớp nào.</div><?php endif; ?>
 <?php foreach ($classes as $c):
     $ls = qall('SELECT l.*, (SELECT COUNT(*) FROM questions q WHERE q.set_id=l.quiz_set_id AND q.correct IS NOT NULL) AS n_quiz, '

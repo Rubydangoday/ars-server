@@ -140,7 +140,7 @@ function send_xlsx(array $sheets, string $filename): void {
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Content-Length: ' . filesize($f));
-    readfile($f);
+    output_raw(); readfile($f);
     unlink($f);
     exit;
 }

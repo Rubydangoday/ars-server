@@ -33,7 +33,7 @@ $classes = my_classes($code);
 
 student_head('Câu sai', 'wrong.php');
 ?>
-<h1>Câu sai <span class="muted">(<?= count($items) ?>)</span></h1>
+<div class="page-head"><div><h1>❌ Câu sai <span class="count-pill"><?= count($items) ?></span></h1><p class="muted">Ghi lý do sai, xem đáp án đúng và ôn lại — đúng 2 lần liên tiếp là “đã thuộc”.</p></div></div>
 <form class="filters" method="get">
   <?php if (count($classes) > 1): ?><select name="class" onchange="this.form.submit()"><option value="">Mọi lớp</option>
     <?php foreach ($classes as $c): ?><option value="<?= $c['class_id'] ?>" <?= $cls === (int)$c['class_id'] ? 'selected' : '' ?>><?= h($c['class_name']) ?></option><?php endforeach; ?></select><?php endif; ?>

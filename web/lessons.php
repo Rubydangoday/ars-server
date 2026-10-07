@@ -31,7 +31,7 @@ $published = count(array_filter($lessons, fn($l) => $l['published']));
 page_head('Buổi học — ' . $c['name'], 'lessons.php');
 ?>
 <div class="page-head">
-  <div><h1>Buổi học</h1><p class="muted">Mỗi buổi: một file bài giảng, phần kiến thức trọng tâm và vài câu hỏi củng cố cho học sinh tự kiểm tra.</p></div>
+  <div><h1>📚 Buổi học</h1><p class="muted">Mỗi buổi: một file bài giảng, phần kiến thức trọng tâm và vài câu hỏi củng cố cho học sinh tự kiểm tra.</p></div>
   <form method="get" class="row" style="margin:0"><label>Lớp <select name="class" onchange="this.form.submit()">
     <?php foreach ($classes as $x): ?><option value="<?= $x['id'] ?>" <?= (int)$x['id'] === $cid ? 'selected' : '' ?>><?= h($x['name']) ?></option><?php endforeach; ?></select></label></form>
 </div>

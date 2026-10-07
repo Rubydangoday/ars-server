@@ -108,6 +108,7 @@ function check_csrf(): void {
 check_csrf();
 
 require_once __DIR__ . '/i18n.php';
+require_once __DIR__ . '/ui.php';
 // ?lang=vi|en trên bất kỳ trang nào: lưu lựa chọn (cookie + tài khoản đang đăng nhập) rồi tải lại trang không kèm tham số.
 if (isset($_GET['lang']) && isset(LANGS[$_GET['lang']]) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
     set_lang($_GET['lang']);
@@ -119,6 +120,10 @@ if (isset($_GET['lang']) && isset(LANGS[$_GET['lang']]) && ($_SERVER['REQUEST_ME
     header('Location: ' . strtok($_SERVER['REQUEST_URI'] ?? '', '?') . ($qs ? '?' . http_build_query($qs) : ''));
     exit;
 }
+// Ngôn ngữ khác tiếng Việt: dịch toàn bộ HTML trước khi gửi (lib/i18n.php → i18n_html).
+if (PHP_SAPI !== 'cli' && lang() !== 'vi') ob_start('i18n_html');
+/** Trước khi gửi file lớn (readfile): tắt bộ đệm dịch để không giữ cả file trong RAM. */
+function output_raw(): void { while (ob_get_level()) ob_end_clean(); }
 /** Sau khi đăng nhập: dùng ngôn ngữ đã lưu theo tài khoản (nếu có). */
 function apply_user_lang(?string $l): void { if ($l) set_lang($l); }
 
@@ -193,6 +198,8 @@ function uploads_dir(): string {
 function json_out($data, int $code = 200): void {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
+    if (is_array($data) && function_exists('lang') && lang() !== 'vi')
+        foreach (['error', 'msg', 'message_text'] as $k) if (isset($data[$k]) && is_string($data[$k])) $data[$k] = i18n_plain($data[$k]);
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -337,7 +344,17 @@ const NAV_MORE = [
     'sync.php'      => ['☁️', 'Cloud', ['sync.php', 'notify.php']],
 ];
 function asset_base(): string {return str_contains($_SERVER['SCRIPT_NAME']??'', '/parent/')?'../assets/':'assets/';}
-function math_assets(): string {$a=asset_base();return '<link rel="stylesheet" href="'.$a.'vendor/katex/katex.min.css"><script defer src="'.$a.'vendor/katex/katex.min.js"></script><script defer src="'.$a.'vendor/katex/contrib/auto-render.min.js"></script><script defer src="'.$a.'math.js"></script><script defer src="'.$a.'fx.js"></script>';}
+/** Gắn phiên bản (thời điểm sửa file) vào đường dẫn CSS/JS trong assets/ để trình duyệt luôn tải bản mới sau mỗi lần cập nhật. */
+function av(string $file): string {
+    $m = @filemtime(__DIR__ . '/../assets/' . $file);
+    return $file . ($m ? '?v=' . $m : '');
+}
+function math_assets(): string {$a=asset_base();return '<link rel="stylesheet" href="'.$a.'vendor/katex/katex.min.css"><script defer src="'.$a.'vendor/katex/katex.min.js"></script><script defer src="'.$a.'vendor/katex/contrib/mhchem.min.js"></script><script defer src="'.$a.'vendor/katex/contrib/auto-render.min.js"></script><script defer src="'.$a.av('math.js').'"></script><script defer src="'.$a.av('fx.js').'"></script>';}
+/** Biểu tượng tab trình duyệt (favicon) + biểu tượng khi thêm vào màn hình chính điện thoại. $a = đường dẫn tới assets/. */
+function favicon_links(string $a): string {
+    return '<link rel="icon" href="' . $a . 'favicon.svg" type="image/svg+xml"><link rel="icon" href="' . $a . 'favicon-32.png" sizes="32x32" type="image/png">'
+         . '<link rel="apple-touch-icon" href="' . $a . 'apple-touch-icon.png"><meta name="theme-color" content="#1f6feb">';
+}
 /** Logo ARS: chữ A + sóng Remote (SVG, không tải ngoài). */
 function ars_logo(): string {
     return '<svg class="ars-logo" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="currentColor"/><path d="M11 29 18.5 10h3L29 29h-3.6l-1.7-4.6h-7.4L14.6 29zm6.5-7.6h5.2L20 15z" fill="#fff"/>'
@@ -363,10 +380,10 @@ function page_head(string $title, string $active = '', bool $bare = false): void
     echo '<!doctype html><html lang="' . lang() . '"><head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="csrf" content="' . h(csrf_token()) . '">'
-       . '<title>' . h($title) . ' — ARS</title><link rel="stylesheet" href="'.asset_base().'style.css">'.i18n_js().math_assets().'</head>'
+       . '<title>' . h($title) . ' — ARS</title>' . favicon_links(asset_base()) . '<link rel="stylesheet" href="'.asset_base().av('style.css').'">'.i18n_js().math_assets().gtranslate_script(asset_base()).'</head>'
        . '<body class="' . ($bare ? 'bare' : 'app') . ($parent ? ' parent-portal' : '') . '"' . fx_attr() . '>';
     if (!$bare && $t && !$parent) {
-        echo '<header class="top"><a class="brand" href="dashboard.php">' . ars_logo() . '<span>ARS<small>' . h(setting('org_name', t('Lớp học tương tác'))) . '</small></span></a>'
+        echo '<header class="top"><a class="brand" href="dashboard.php">' . ars_logo() . '<span><span translate="no">ARS</span><small>' . h(setting('org_name', t('Lớp học tương tác'))) . '</small></span></a>'
            . '<nav class="tabs-main" aria-label="' . te('Điều hướng') . '">';
         foreach (NAV as $href => [$label, $pages]) echo '<a href="' . $href . '"' . (in_array($page, $pages, true) ? ' class="on" aria-current="page"' : '') . '>' . te($label) . '</a>';
         $more = NAV_MORE;
@@ -377,7 +394,7 @@ function page_head(string $title, string $active = '', bool $bare = false): void
             $on = in_array($page, $pages, true); $in_more = $in_more || $on;
             $items .= '<a href="' . $href . '"' . ($on ? ' class="on"' : '') . '><i>' . $ico . '</i>' . te($label) . '</a>';
         }
-        echo '<details class="more' . ($in_more ? ' on' : '') . '"><summary>' . te('Thêm') . '</summary><div class="menu">' . $items . '</div></details></nav>'
+        echo '</nav><details class="more' . ($in_more ? ' on' : '') . '"><summary>' . te('Thêm') . '</summary><div class="menu">' . $items . '</div></details>'
            . '<div class="top-right">' . live_pill((int)$t['id'])
            . '<a class="btn launch" href="classes.php">▶ ' . te('Bắt đầu') . '</a>' . lang_switch()
            . '<details class="user"><summary title="' . h($t['full_name']) . '"><span class="avatar">' . h(mb_strtoupper(mb_substr(trim(strrchr(' ' . $t['full_name'], ' ')), 0, 1))) . '</span></summary>'
@@ -385,9 +402,11 @@ function page_head(string $title, string $active = '', bool $bare = false): void
            . '<a href="privacy.php">🔒 ' . te('Quyền riêng tư') . '</a><a href="logout.php">↩ ' . te('Đăng xuất') . '</a></div></details></div></header>';
     }
     if (!$bare && $parent && !empty($_SESSION['parent'])) {      // thanh trên cổng phụ huynh (xanh lá mạ)
-        echo '<header class="p-top"><a class="brand" href="home.php">' . ars_logo() . '<span>ARS · ' . te('Phụ huynh') . '</span></a>'
-           . '<nav><a href="home.php"' . ($page === 'home.php' ? ' class="on"' : '') . '>' . te('Tiến độ của con') . '</a><a href="home.php#account">' . te('Tài khoản') . '</a></nav>'
-           . '<div class="right">' . lang_switch() . '<a href="index.php?logout=1">' . te('Đăng xuất') . '</a></div></header>';
+        $pn = (string)$_SESSION['parent']['full_name']; $acc = ($_GET['tab'] ?? '') === 'account';
+        echo '<header class="p-top"><a class="brand" href="home.php">' . ars_logo() . '<span><span translate="no">ARS</span><small>' . te('Cổng phụ huynh') . '</small></span></a>'
+           . '<nav><a href="home.php"' . (!$acc ? ' class="on"' : '') . '>📊 ' . te('Tiến độ của con') . '</a><a href="home.php?tab=account"' . ($acc ? ' class="on"' : '') . '>⚙ ' . te('Tài khoản') . '</a></nav>'
+           . '<div class="right">' . lang_switch() . '<details class="user"><summary title="' . h($pn) . '"><span class="avatar">' . h(mb_strtoupper(mb_substr(trim(strrchr(' ' . $pn, ' ')), 0, 1))) . '</span></summary>'
+           . '<div class="menu"><b>' . h($pn) . '</b><a href="home.php?tab=account">⚙ ' . te('Tài khoản') . '</a><a href="../privacy.php">🔒 ' . te('Quyền riêng tư') . '</a><a href="index.php?logout=1">↩ ' . te('Đăng xuất') . '</a></div></details></div></header>';
     }
     echo '<main>';
     foreach ($_SESSION['flash'] ?? [] as [$k, $m]) echo '<div class="flash ' . h($k) . '">' . h(t($m)) . '</div>';
@@ -398,8 +417,8 @@ function page_head(string $title, string $active = '', bool $bare = false): void
 
 function page_foot(string $script = ''): void {
     echo '</main>';
-    echo '<script src="'.asset_base().'vendor/qrcode.js"></script><script src="'.asset_base().'qr.js"></script>';
-    if ($script) echo '<script src="assets/' . h($script) . '"></script>';
+    echo '<script src="'.asset_base().'vendor/qrcode.js"></script><script src="'.asset_base().av('qr.js').'"></script>';
+    if ($script) echo '<script src="assets/' . h(av($script)) . '"></script>';
     echo '</body></html>';
 }
 

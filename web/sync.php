@@ -45,7 +45,7 @@ $log = qall('SELECT * FROM sync_log WHERE teacher_id=? ORDER BY id DESC LIMIT 15
 
 page_head('Đồng bộ Cloud', 'sync.php');
 ?>
-<div class="page-head"><div><h1>Đồng bộ Cloud</h1>
+<div class="page-head"><div><h1>☁️ Đồng bộ Cloud</h1>
   <p class="muted">Trên lớp, server này chạy offline để nhận Remote. Khi có Internet (hoặc cuối ngày), bấm <b>Sync to Cloud</b> để đẩy lớp, học sinh và điểm bấm Remote lên server Cloud — phụ huynh và học sinh ở nhà mở web Cloud là xem được ngay.</p></div>
   <div><a class="btn" href="notify.php">Thông báo Zalo / SMS →</a></div></div>
 

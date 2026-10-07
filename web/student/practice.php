@@ -44,7 +44,7 @@ $history = qall('SELECT * FROM practice_attempts WHERE student_code=? ORDER BY i
 
 student_head('Ôn tập', 'practice.php');
 ?>
-<h1>Ôn tập</h1>
+<div class="page-head"><div><h1>🎯 Ôn tập</h1><p class="muted">Làm bài thầy cô giao, ôn lại câu sai hoặc ôn theo từng chủ đề — câu sai được hỏi lại đến khi bạn thuộc.</p></div></div>
 
 <section class="card">
   <h2>Giáo viên giao</h2>

@@ -126,3 +126,21 @@
     });
   });
 })();
+
+// Menu thả xuống (<details>) ở thanh trên: bấm ra ngoài hoặc Esc thì đóng
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('header details[open]').forEach((d) => { if (!d.contains(e.target)) d.removeAttribute('open'); });
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('header details[open]').forEach((d) => d.removeAttribute('open'));
+});
+
+// Ô lọc bảng: <input data-filter="#id-bang"> ẩn các dòng không chứa chữ đã gõ (không phân biệt dấu)
+(function () {
+  const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+  document.addEventListener('input', (e) => {
+    const f = e.target.closest('[data-filter]'); if (!f) return;
+    const q = fold(f.value.trim());
+    document.querySelectorAll(f.dataset.filter + ' tbody tr').forEach((tr) => { tr.hidden = q !== '' && !fold(tr.textContent).includes(q); });
+  });
+})();

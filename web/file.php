@@ -24,4 +24,4 @@ header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filena
 header('Content-Length: ' . filesize($path));
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=300');
-readfile($path);
+output_raw(); readfile($path);

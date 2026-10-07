@@ -2,12 +2,14 @@
 // Trợ lý AI soạn câu hỏi trắc nghiệm và tóm tắt bài giảng.
 //   provider = anthropic : Claude (API key từ console.anthropic.com)
 //   provider = openai    : mọi API tương thích OpenAI — OpenAI, Ollama/LM Studio chạy trên máy (không cần Internet), v.v.
+//   provider = gemini    : Google Gemini qua cổng tương thích OpenAI (key miễn phí tại aistudio.google.com)
 //   provider = offline   : không gọi mạng; tự sinh câu hỏi từ câu định nghĩa trong tài liệu (chất lượng cơ bản)
 declare(strict_types=1);
 
 const AI_PROVIDERS = [
     'offline'   => ['Cơ bản (không cần Internet)', ''],
     'anthropic' => ['Claude (Anthropic)', 'claude-sonnet-5'],
+    'gemini'    => ['Google Gemini', 'gemini-2.5-flash'],
     'openai'    => ['OpenAI / Ollama / LM Studio', 'gpt-4o-mini'],
 ];
 
@@ -18,7 +20,7 @@ function ai_conf(): array {
         'provider' => $p,
         'key'      => (string)setting('ai_key_' . $p, ''),
         'model'    => (string)setting('ai_model_' . $p, AI_PROVIDERS[$p][1]),
-        'base'     => rtrim((string)setting('ai_base_' . $p, $p === 'openai' ? 'https://api.openai.com/v1' : 'https://api.anthropic.com'), '/'),
+        'base'     => rtrim((string)setting('ai_base_' . $p, ['openai' => 'https://api.openai.com/v1', 'gemini' => 'https://generativelanguage.googleapis.com/v1beta/openai'][$p] ?? 'https://api.anthropic.com'), '/'),
     ];
 }
 function ai_label(?array $c = null): string {
@@ -39,7 +41,19 @@ function ai_system_prompt(): string {
          . "- Giải thích 1–3 câu: vì sao đáp án đúng và vì sao phương án nhiễu dễ gây nhầm nhất là sai.\n"
          . "- Chủ đề (topic) là cụm 2–6 từ, dùng lại cùng một tên cho các câu cùng phần kiến thức.\n"
          . "- Nếu có tài liệu, chỉ hỏi những gì có trong tài liệu; không bịa số liệu.\n"
-         . "- Không lặp lại các câu đã có trong ngân hàng.";
+         . "- Không lặp lại các câu đã có trong ngân hàng.\n"
+         . "- Công thức toán / lý / hoá viết bằng LaTeX đặt trong \\( … \\) (ví dụ \\(\\frac{a}{b}\\), \\(x^2\\), \\(\\ce{H2O}\\)) để hiển thị đẹp trên máy chiếu.\n"
+         . "- Viết theo ngôn ngữ giảng viên dùng trong yêu cầu (mặc định tiếng Việt).\n"
+         . "- Nếu có “các yêu cầu trước trong cuộc trò chuyện”, hiểu yêu cầu mới là điều chỉnh tiếp (vd “khó hơn” = khó hơn lượt trước) và tạo câu MỚI, khác hẳn các câu đã gợi ý.";
+}
+
+/** Trợ lý giảng dạy (hỏi đáp tự do): giáo án, cách giảng, rubric, hoạt động lớp… */
+function ai_teacher_system(): string {
+    return "Bạn là trợ lý giảng dạy trong ứng dụng lớp học ARS, hỗ trợ giáo viên/giảng viên Việt Nam. "
+         . "Giúp: soạn giáo án, ý tưởng hoạt động trên lớp, cách giảng phần khó, ví dụ minh hoạ, rubric chấm tự luận, nhận xét học sinh, phân tích kết quả, câu hỏi thảo luận.\n"
+         . "Nguyên tắc: trả lời đúng trọng tâm, thực tế, dùng được ngay trên lớp; trình bày gọn bằng ### tiêu đề nhỏ, gạch đầu dòng, **in đậm** ý chính; "
+         . "công thức viết LaTeX trong \\( … \\). Trả lời theo ngôn ngữ giáo viên dùng. Nếu có tài liệu bài giảng thì bám sát tài liệu. "
+         . "Đọc lịch sử trò chuyện; khi được yêu cầu làm lại / cách khác thì đổi cách tiếp cận, không lặp lại câu trả lời cũ.";
 }
 
 function ai_user_prompt(array $o): string {
@@ -49,6 +63,7 @@ function ai_user_prompt(array $o): string {
     if (trim($o['prompt']) !== '') $s .= "Yêu cầu của giảng viên: " . trim($o['prompt']) . "\n";
     if (!empty($o['subject'])) $s .= "Môn/lớp: {$o['subject']}\n";
     if (trim($o['source'] ?? '') !== '') $s .= "\nTài liệu (bài giảng) dùng làm nguồn:\n<tai_lieu>\n" . $o['source'] . "\n</tai_lieu>\n";
+    if (!empty($o['history'])) $s .= "\nCác yêu cầu trước trong cuộc trò chuyện (cũ → mới):\n- " . implode("\n- ", array_slice($o['history'], -6)) . "\n";
     if (!empty($o['existing'])) $s .= "\nCâu đã có trong ngân hàng (không lặp lại):\n- " . implode("\n- ", array_slice($o['existing'], 0, 60)) . "\n";
     return $s;
 }
@@ -122,7 +137,8 @@ function ai_call(array $c, string $system, $user, ?array $schema, int $max_token
         if ($schema && $data === null) $data = ai_json_from_text($text);
         return ['data' => $schema ? $data : trim($text), 'in' => $j['usage']['input_tokens'] ?? null, 'out' => $j['usage']['output_tokens'] ?? null];
     }
-    if ($c['provider'] === 'openai') {
+    if ($c['provider'] === 'openai' || $c['provider'] === 'gemini') {
+        if ($c['provider'] === 'gemini' && $c['key'] === '') throw new RuntimeException('Chưa nhập API key của Gemini. Vào Cài đặt → Trợ lý AI.');
         $sys = $system . ($schema ? "\n\nChỉ trả về một đối tượng JSON hợp lệ theo schema sau, không thêm chữ nào khác:\n" . json_encode($schema, JSON_UNESCAPED_UNICODE) : '');
         $body = ['model' => $c['model'], 'temperature' => 0.7,
                  'messages' => array_merge([['role' => 'system', 'content' => $sys]], $msgs)];

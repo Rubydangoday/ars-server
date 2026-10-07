@@ -8,7 +8,7 @@ require __DIR__ . '/lib/oauth.php';
 
 const OAUTH_HOME = ['teacher' => 'dashboard.php', 'student' => 'student/home.php', 'parent' => 'parent/home.php'];
 const OAUTH_LOGIN = ['teacher' => 'index.php', 'student' => 'student/index.php', 'parent' => 'parent/index.php'];
-const OAUTH_ACCOUNT = ['teacher' => 'settings.php#account', 'student' => 'student/account.php', 'parent' => 'parent/home.php#account'];
+const OAUTH_ACCOUNT = ['teacher' => 'settings.php#account', 'student' => 'student/account.php', 'parent' => 'parent/home.php?tab=account#account'];
 
 /** Khoá tài khoản ARS của người đang đăng nhập theo cổng; NULL nếu chưa đăng nhập cổng đó. */
 function current_key(string $for): ?string {
@@ -48,7 +48,7 @@ function login_as(string $for, string $key): void {
 
 /** Dùng mã mời phụ huynh (một lần, 7 ngày). Trả về dòng mời đã khoá trong giao dịch đang mở. */
 function take_invite(string $token): array {
-    $i = q1('SELECT * FROM parent_invites WHERE token_hash=? AND used_at IS NULL AND expires_at>NOW() FOR UPDATE', [hash('sha256', $token)]);
+    $i = q1('SELECT * FROM parent_invites WHERE token_hash=? AND used_at IS NULL AND expires_at>NOW() FOR UPDATE', [parent_invite_hash($token)]);
     if (!$i || !qv('SELECT 1 FROM students WHERE class_id=? AND student_code=?', [$i['class_id'], $i['student_code']])) throw new RuntimeException('Mã mời đã hết hạn hoặc đã dùng.');
     q('UPDATE parent_invites SET used_at=NOW() WHERE id=?', [$i['id']]);
     return $i;
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($mode === 'register' && $for === 'parent' && trim((string)($_POST['invite'] ?? '')) !== '') {
             // Phụ huynh đã nhập sẵn mã mời: tạo tài khoản ngay khi Google/Facebook gọi lại
             $tok = trim((string)$_POST['invite']);
-            if (!preg_match('/^[a-f0-9]{32}$/', $tok)) throw new RuntimeException('Mã mời không đúng (32 ký tự thầy cô gửi).');
+            parent_invite_hash($tok);                                 // kiểm tra dạng mã (8 ký tự) + chống dò
             $extra['invite'] = $tok;
         }
         redirect(oauth_start($p, $for, $mode, $extra));

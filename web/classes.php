@@ -34,7 +34,8 @@ page_head(t('Lớp học'), 'classes.php');
 
 <div class="tiles">
   <?php foreach ($classes as $c): ?>
-    <a class="tile" href="class.php?id=<?= $c['id'] ?>">
+    <a class="tile cls-tile" href="class.php?id=<?= $c['id'] ?>" style="--hue:<?= (crc32((string)$c['name']) % 360) ?>">
+      <div class="cls-band"><span class="cls-ini"><?= h(initials((string)$c['name'])) ?></span><span class="cls-room">room <?= (int)$c['room_id'] ?></span></div>
       <div class="no"><?= te('Mã lớp (room)') ?> <?= (int)$c['room_id'] ?></div>
       <h3><?= h($c['name']) ?></h3>
       <div class="meta"><span>👥 <?= te('{n} học sinh', ['n' => (int)$c['n_students']]) ?></span><span>🗓 <?= te('{n} phiên', ['n' => (int)$c['n_sessions']]) ?></span><span>📄 <?= te('{n}/10 bài giảng', ['n' => (int)$c['n_lectures']]) ?></span></div>
@@ -45,12 +46,12 @@ page_head(t('Lớp học'), 'classes.php');
       </div>
     </a>
   <?php endforeach; ?>
-  <label class="tile new" for="new-class-name" onclick="document.getElementById('new-class').open=true">
+  <label class="tile new" for="new-class-name" onclick="const d=document.getElementById('new-class');d.open=true;d.scrollIntoView({behavior:'smooth',block:'center'})">
     <b>＋</b><span><?= te('Tạo lớp mới') ?></span>
   </label>
 </div>
 
-<details class="create card" id="new-class" <?= $classes ? '' : 'open' ?>>
+<details class="create card<?= $classes ? ' hide-closed' : '' ?>" id="new-class" <?= $classes ? '' : 'open' ?>>
   <summary><h2 style="margin:0"><?= te('Tạo lớp mới') ?></h2></summary>
   <form method="post" class="row">
     <?= csrf_field() ?><input type="hidden" name="action" value="create">

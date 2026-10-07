@@ -105,7 +105,7 @@ if (($_GET['export'] ?? '') === 'xlsx') {
 $tot = ['n' => count($rows), 'hs' => count($by), 'done' => array_sum(array_column($rows, 'n_done')), 'ok' => array_sum(array_column($rows, 'n_ok')), 'wrong' => array_sum(array_column($rows, 'n_wrong'))];
 page_head('Luyện tập của học sinh', 'sessions.php');
 ?>
-<div class="page-head"><div><h1>Lịch sử</h1><p class="muted">Học sinh luyện tập trên web: bài giáo viên giao, ôn câu sai, ôn theo chủ đề, câu hỏi củng cố cuối buổi và câu hỏi với trợ lý AI.</p></div>
+<div class="page-head"><div><h1>📝 Luyện tập của học sinh</h1><p class="muted">Học sinh luyện tập trên web: bài giáo viên giao, ôn câu sai, ôn theo chủ đề, câu hỏi củng cố cuối buổi và câu hỏi với trợ lý AI.</p></div>
   <a class="btn" href="?<?= h(http_build_query($f + ['export' => 'xlsx'])) ?>">⬇ Xuất Excel</a></div>
 <nav class="subtabs"><a href="sessions.php">🗓 Phiên trả lời clicker</a><a class="on" href="practice_log.php">📝 Luyện tập của học sinh</a></nav>
 

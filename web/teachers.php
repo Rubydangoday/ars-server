@@ -48,7 +48,7 @@ $rows = qall('SELECT t.*, (SELECT COUNT(*) FROM classes c WHERE c.teacher_id=t.i
            . 'FROM teachers t ORDER BY t.id');
 page_head('Giáo viên', 'teachers.php');
 ?>
-<h1>Giáo viên dùng server</h1>
+<div class="page-head"><div><h1>👥 Giáo viên dùng server</h1><p class="muted">Mời giáo viên khác, cấp quyền quản trị, khoá tài khoản hoặc đặt lại mật khẩu.</p></div></div>
 <?php if (!empty($_SESSION['temp_pw'])): [$u, $pw] = $_SESSION['temp_pw']; unset($_SESSION['temp_pw']); ?>
   <div class="flash warn">Mật khẩu tạm của <b><?= h($u) ?></b>: <code style="font-size:16px"><?= h($pw) ?></code> — gửi cho giáo viên, nhắc đổi ở <i>Cài đặt → Tài khoản</i> sau khi đăng nhập. Mật khẩu chỉ hiện một lần.</div>
 <?php endif; ?>

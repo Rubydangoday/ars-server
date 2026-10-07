@@ -53,7 +53,9 @@ ars-server/
 │   └── arscfg.py                 Dùng chung cho Python: đọc config.ini, kết nối DB, mã hoá bitmap ghế / mặt nạ câu
 ├── tools/
 │   ├── sim_clickers.py           Giả lập gateway + N Remote ở tầng MQTT (chạy thử không cần phần cứng, thử tải)
-│   └── i18n_wrap.py              Công cụ dịch: bọc chuỗi tiếng Việt bằng t()/te(), liệt kê khoá dịch
+│   ├── i18n_wrap.py              Công cụ dịch: bọc chuỗi tiếng Việt bằng t()/te(), liệt kê khoá dịch
+│   ├── i18n_collect.py           Duyệt mọi trang trên máy chủ thử, liệt kê chữ tiếng Việt chưa có bản dịch
+│   └── i18n_static.py            Quét mã nguồn PHP, liệt kê chữ tiếng Việt chưa có bản dịch
 │
 ├── db/
 │   ├── schema.sql                Bảng lõi: teachers, classes, students, devices, question_sets, questions, sessions,
@@ -65,7 +67,8 @@ ars-server/
 │   ├── migrate_006_*.sql         Admin trường/lớp hành chính, đồng bộ Cloud, thi đua đổi quà, thông báo Zalo/SMS
 │   ├── migrate_007_oauth.sql     Đăng nhập Google / Facebook
 │   ├── migrate_008_*.sql         Học sinh tự đăng ký chưa cần lớp
-│   └── migrate_009_language.sql  Ngôn ngữ giao diện theo tài khoản (vi / en)
+│   ├── migrate_009_language.sql  Ngôn ngữ giao diện theo tài khoản (vi / en)
+│   └── migrate_010_tutor_chats.sql  Trợ lý AI: nhiều cuộc trò chuyện, đánh giá 👍/👎
 │
 ├── deploy/                       Cài đặt & vận hành trên Ubuntu
 │   ├── install_ubuntu.sh         Cài một lệnh: Apache+PHP, MariaDB, Mosquitto, Python libs, chép code vào /opt/ars-server
@@ -110,7 +113,7 @@ ars-server/
 │   ├── parent/                   Cổng phụ huynh: index (đăng nhập/đăng ký bằng mã mời), home (tiến độ của con)
 │   ├── lang/en.php               Từ điển tiếng Anh (khoá = câu tiếng Việt trong mã)
 │   ├── lib/                      Thư viện PHP (bị chặn truy cập trực tiếp):
-│   │   ├── i18n.php              Đa ngôn ngữ: t()/te(), chọn ngôn ngữ (?lang=en|vi, cookie, theo tài khoản)
+│   │   ├── i18n.php              Đa ngôn ngữ: t()/te(), chọn ngôn ngữ (?lang=en|vi, cookie, theo tài khoản), dịch toàn trang i18n_html()
 │   │   ├── bootstrap.php         Cấu hình, PDO, phiên, CSRF, quyền sở hữu lớp/buổi, giao diện chung, bump_state()
 │   │   ├── student.php · lms.php Dùng chung cổng HS; bài tập về nhà, tệp, phụ huynh
 │   │   ├── stats.php · sheet.php Thống kê buổi học; đọc/ghi .xlsx/.csv không cần thư viện
@@ -288,4 +291,6 @@ Mở bảng điều khiển, bấm **Mở câu** — các ô chuyển xanh dần
 
 - Giáo viên và phụ huynh chọn **🇻🇳 VI / 🇬🇧 EN** ở thanh trên (hoặc màn đăng nhập). Lựa chọn lưu theo cookie và theo tài khoản (đăng nhập máy khác vẫn giữ). Lần đầu mở, trình duyệt đặt tiếng Anh sẽ thấy tiếng Anh. Cổng học sinh giữ tiếng Việt.
 - Đã dịch: thanh trên, đăng nhập / đăng ký / quên mật khẩu, Tổng quan, Lớp học, trang lớp, bảng điều khiển + màn chiếu (cả JavaScript), Kết quả, cổng phụ huynh, Google/Facebook. Trang chưa dịch hiện tiếng Việt.
+- **Ngôn ngữ khác (Google Dịch):** cuối menu ngôn ngữ, dịch máy toàn bộ trang sang mọi ngôn ngữ Google Dịch hỗ trợ (danh sách lấy trực tiếp từ Google, luôn mới). Cần Internet; script Google chỉ tải khi người dùng chọn; nội dung trang (kể cả tên, điểm học sinh) được gửi tới Google — quản trị tắt được ở Cài đặt → Thông tin chung. Chữ cái đáp án, phím Remote, số ghế, tên ARS gắn `translate="no"`.
 - Thêm bản dịch: bọc chuỗi bằng `t('…')` / `te('…')` (PHP) hoặc `T('…')` (JS, trong control.js / projector.js); biến dạng `{n}`. `python3 tools/i18n_wrap.py keys web` liệt kê mọi khoá → thêm vào `web/lang/en.php`.
+- Dịch toàn trang: khi chọn tiếng Anh, `i18n_html()` lọc HTML trước khi gửi (chữ giữa các thẻ, placeholder/title, confirm) và `assets/i18n.js` dịch chữ do JavaScript chèn vào — cùng từ điển `web/lang/en.php`, số trong câu viết `{n}`. Tìm chữ còn sót: `KEEP=1 bash tests/run_local.sh` rồi `python3 tools/i18n_collect.py /tmp/ars-test.XXXX/smoke.json` (thêm `EN=1` để xem chữ Việt còn sót trên giao diện tiếng Anh).

@@ -57,7 +57,7 @@ page_head(t('Kết quả') . ' — ' . $ses['class_name'], 'results.php');
     <tbody><?php foreach ($S['questions'] as $r): $q = $r['sq']; $top = $r['distractors'] ? array_key_first($r['distractors']) : null; ?>
       <tr>
         <td><?= (int)$q['position'] ?></td>
-        <td><?= h(mb_strimwidth($q['content'], 0, 80, '…')) ?></td>
+        <td class="qtext"><?= h(mb_strimwidth($q['content'], 0, 80, '…')) ?></td>
         <td><?= $r['n'] ?></td>
         <td><?= pct($r['participation']) ?></td>
         <td><?= $q['correct'] ? pct($r['p']) . ' <span class="muted small">' . judge_p($r['p']) . '</span>' : ('<span class="muted">' . t('khảo sát') . '</span>') ?></td>
@@ -90,7 +90,7 @@ if ($topics): ?>
 
 <?php foreach ($S['questions'] as $r): $q = $r['sq']; ?>
 <section class="card qresult">
-  <h3><?= te('Câu') ?> <?= (int)$q['position'] ?>: <?= h($q['content']) ?></h3>
+  <h3><?= te('Câu') ?> <?= (int)$q['position'] ?>: <span class="qtext"><?= h($q['content']) ?></span></h3>
   <div class="cols">
     <ol class="opts"><?php foreach (options_of($q) as $L => $o): ?><li class="<?= $L === $q['correct'] ? 'correct' : '' ?>"><b><?= $L ?>.</b> <?= h($o) ?></li><?php endforeach; ?></ol>
     <?= bar_svg($r['dist'], $q['correct'] ?: null) ?>

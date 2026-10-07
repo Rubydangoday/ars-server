@@ -51,5 +51,5 @@ $z->close();
 header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 header('Content-Disposition: attachment; filename="ARS_de_mau.docx"');
 header('Content-Length: ' . filesize($tmp));
-readfile($tmp);
+output_raw(); readfile($tmp);
 unlink($tmp);

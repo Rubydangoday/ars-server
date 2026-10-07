@@ -121,7 +121,7 @@ function offline_generate(array $o): array {
         $qs[] = offline_pack($content, array_map(fn($x) => $x . ' ' . $n['unit'], array_merge([$n['num']], $vars)), 'Theo tài liệu: “' . $n['src'] . '”.', $n['topic'], 'tb');
     }
     if (!$qs) throw new RuntimeException('Không tìm thấy đủ câu định nghĩa trong tài liệu để tạo câu hỏi ở chế độ cơ bản. '
-        . 'Hãy nhập API key (Claude hoặc OpenAI) hoặc dùng Ollama trên máy trong Cài đặt → Trợ lý AI.');
+        . 'Bật Google Gemini (miễn phí), Claude, OpenAI hoặc Ollama trong Cài đặt → Trợ lý AI để AI soạn theo yêu cầu.');
     return $qs;
 }
 

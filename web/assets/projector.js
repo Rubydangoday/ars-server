@@ -27,12 +27,12 @@
     } else if (!reveal && revealed === String(c.id)) revealed = '';
     primed = true;
     setHTML($('pj-opts'), Object.entries(c.options).map(([k, v]) =>
-      `<li class="${reveal && k === c.correct ? 'correct' : ''}"><b>${k}</b><span>${esc(v)}</span></li>`).join(''));
+      `<li class="${reveal && k === c.correct ? 'correct' : ''}"><b translate="no">${k}</b><span>${esc(v)}</span></li>`).join(''));
     if (showBars) {
       const keys = Object.keys(c.dist), max = Math.max(1, ...keys.map((k) => c.dist[k]));
       const tot = Math.max(1, keys.reduce((a, k) => a + c.dist[k], 0));
       setHTML($('pj-bars'), '<div class="hbars big">' + keys.map((k) =>
-        `<div class="hb${k === c.correct ? ' ok' : ''}"><span class="k">${k}</span><span class="track"><span class="fill" style="width:${c.dist[k] / max * 100}%"></span></span><span class="v">${Math.round(c.dist[k] * 100 / tot)}%</span></div>`).join('') + '</div>');
+        `<div class="hb${k === c.correct ? ' ok' : ''}"><span class="k" translate="no">${k}</span><span class="track"><span class="fill" style="width:${c.dist[k] / max * 100}%"></span></span><span class="v">${Math.round(c.dist[k] * 100 / tot)}%</span></div>`).join('') + '</div>');
     } else setHTML($('pj-bars'), '');
     $('pj-count').textContent = c.n_answered;
     $('pj-logged').textContent = s.n_logged;
