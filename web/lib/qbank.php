@@ -28,6 +28,7 @@ function qbank_add(array $set, array $q): int {
     $opts = array_values($q['options']);
     $cols = [];
     for ($i = 0; $i < 10; $i++) $cols[] = isset($opts[$i]) ? mb_substr(trim((string)$opts[$i]), 0, 500) : null;
+    set_unfinalize((int)$set['id']);                     // trước INSERT: giữ nguyên lastInsertId() cho nơi gọi
     $pos = (int)qv('SELECT COALESCE(MAX(position),0)+1 FROM questions WHERE set_id=?', [$set['id']]);
     $tl = isset($q['time_limit']) && (int)$q['time_limit'] >= 5 ? (int)$q['time_limit'] : null;
     $d = (string)($q['difficulty'] ?? '');

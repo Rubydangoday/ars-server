@@ -63,7 +63,7 @@ $l = own_lesson($lid);
 $all = qall('SELECT id, no, title, file_store FROM lessons WHERE class_id=? ORDER BY no', [$cid]);
 $quiz = $l['quiz_set_id'] ? qall('SELECT * FROM questions WHERE set_id=? ORDER BY position', [$l['quiz_set_id']]) : [];
 $sess = qall('SELECT s.*, qs.title FROM sessions s JOIN question_sets qs ON qs.id=s.set_id WHERE s.lesson_id=? ORDER BY s.id DESC', [$lid]);
-$sets = qall('SELECT id, title, purpose, (SELECT COUNT(*) FROM questions q WHERE q.set_id=qs.id) n FROM question_sets qs WHERE teacher_id=? ORDER BY (id=?) DESC, purpose, id DESC', [$t['id'], (int)$l['quiz_set_id']]);
+$sets = qall('SELECT id, title, purpose, finalized_at, (SELECT COUNT(*) FROM questions q WHERE q.set_id=qs.id) n FROM question_sets qs WHERE teacher_id=? ORDER BY (id=?) DESC, purpose, id DESC', [$t['id'], (int)$l['quiz_set_id']]);
 $n_students = (int)qv('SELECT COUNT(*) FROM students WHERE class_id=?', [$cid]);
 $done = qall('SELECT a.student_code, MAX(a.n_first_ok) best, MAX(a.n_questions) nq FROM practice_attempts a WHERE a.lesson_id=? AND a.finished_at IS NOT NULL GROUP BY a.student_code', [$lid]);
 $ext = $l['file_name'] ? strtolower(pathinfo($l['file_name'], PATHINFO_EXTENSION)) : '';
@@ -144,7 +144,7 @@ page_head(lesson_label($l) . ' — ' . $l['class_name'], 'lessons.php');
       <?php elseif (!$sets): ?><p class="muted small">Chưa có bộ câu hỏi. <a href="compose.php?lesson=<?= $lid ?>">Soạn câu hỏi</a>.</p>
       <?php else: ?>
       <form method="post" action="class.php?id=<?= $cid ?>" class="stack"><?= csrf_field() ?><input type="hidden" name="action" value="start_session"><input type="hidden" name="lesson_id" value="<?= $lid ?>">
-        <label>Bộ câu hỏi <select name="set_id"><?php foreach ($sets as $s): if (!$s['n']) continue; ?><option value="<?= $s['id'] ?>"><?= h($s['title']) ?> (<?= (int)$s['n'] ?> câu)</option><?php endforeach; ?></select></label>
+        <label>Bộ câu hỏi <select name="set_id"><?php foreach ($sets as $s): if (!$s['n']) continue; ?><option value="<?= $s['id'] ?>"><?= h($s['title']) ?> (<?= (int)$s['n'] ?> câu<?= !empty($s['finalized_at']) ? ' ✓' : ' · ' . te('đang soạn') ?>)</option><?php endforeach; ?></select></label>
         <label>Loại <select name="kind"><option value="class">Buổi học</option><option value="test">Bài kiểm tra</option></select></label>
         <label class="check"><input type="checkbox" name="allow_change" checked> Cho đổi đáp án khi câu còn mở</label>
         <button class="primary">Bắt đầu phiên trả lời</button>

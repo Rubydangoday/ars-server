@@ -398,7 +398,7 @@ iframe.pdf { width: 100%; height: 560px; border: 1px solid var(--line); border-r
 .btn.small { font-size: 13px; padding: 4px 10px; }
 /* khung trợ lý AI: cao bằng màn hình, cuộn bên trong, ô nhập luôn ở đáy */
 @media (min-width: 1101px) {
-  .panel.ai { position: sticky; top: 64px; height: calc(100vh - 80px); min-height: 560px; }
+  .panel.ai { position: sticky; top: 76px; height: calc(100vh - 88px); min-height: 480px; }
   .panel.ai .chat { flex: 1; overflow-y: auto; min-height: 0; }
   .panel.ai .composer { position: static; }
 }
@@ -1205,3 +1205,26 @@ body.app .seg button.on { background: var(--brand); color: #fff; }
   header.top > details.more .menu { right: 0; left: auto; }
 }
 body.app .seg button { transition: none; }
+.key-saved { display: block; margin-top: 6px; font-size: 12.5px; font-weight: 600; color: #067647; } .key-saved code { background: #ecfdf3; padding: 1px 6px; border-radius: 6px; }
+
+/* v19: xác nhận hoàn tất bộ câu hỏi */
+.fin-card { border-left: 4px solid #f2690d !important; }
+.fin-card.done { border-left-color: #12a150 !important; background: linear-gradient(90deg, #f3fbf6, #fff 50%); }
+.fin-head { display: flex; align-items: flex-start; gap: 14px; }
+.fin-head h2 { margin: 0 0 2px; } .fin-head p { margin: 0; }
+.fin-ico { font-size: 30px; line-height: 1; }
+.fin-act { margin-left: auto; }
+.fin-checks { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 18px; }
+.fin-checks li { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.fin-checks i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-style: normal; font-weight: 800; font-size: 12px; flex: none; }
+.fin-checks .ok i { background: #e6f6ec; color: #087a3b; } .fin-checks .warn i { background: #fff4e0; color: #b25e09; } .fin-checks .bad i { background: #fdecec; color: #c4262d; }
+.fin-checks .bad { color: #b42318; font-weight: 600; }
+.fin-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed #e9ecf2; max-width: none; }
+.fin-form label { width: 150px; }
+.dst-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; } .dst-row select { margin-top: 0 !important; flex: 1; min-width: 0; }
+.fin-link { white-space: nowrap; }
+/* v19: nút thêm tất cả câu AI vào bài kiểm tra */
+body.app .ai-addall { min-height: 32px; padding: 4px 12px; font-size: 13px; align-self: flex-end; white-space: nowrap; }
+body.app .ai-addall b { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 99px; background: #eef2f7; color: #344054; font-size: 12px; }
+body.app .ai-addall.primary b { background: rgba(255,255,255,.25); color: #fff; }
+.ai-opts.chat-mode .ai-addall { display: none; }

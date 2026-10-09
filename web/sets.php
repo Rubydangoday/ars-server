@@ -70,7 +70,7 @@ page_head('Bộ câu hỏi', 'sets.php');
 <table class="grid">
   <thead><tr><th>Bộ câu hỏi</th><th>Loại</th><th>Số câu</th><th>Sử dụng</th><th></th></tr></thead>
   <tbody><?php foreach ($sets as $s): ?>
-    <tr><td><a href="set.php?id=<?= $s['id'] ?>"><b><?= h($s['title']) ?></b></a><?= $s['lesson'] ? '<br><span class="small muted">Câu hỏi củng cố · ' . h($s['lesson']) . '</span>' : '' ?></td>
+    <tr><td><a href="set.php?id=<?= $s['id'] ?>"><b><?= h($s['title']) ?></b></a><?= !empty($s['finalized_at']) ? ' <span class="tag ok">✓ Hoàn tất</span>' : ' <a class="tag warn" href="set.php?id=' . (int)$s['id'] . '#finalize" title="Bấm để kiểm tra và xác nhận">📝 Đang soạn</a>' ?><?= $s['lesson'] ? '<br><span class="small muted">Câu hỏi củng cố · ' . h($s['lesson']) . '</span>' : '' ?></td>
       <td><form method="post" class="inline" title="Đổi loại"><?= csrf_field() ?><input type="hidden" name="action" value="purpose"><input type="hidden" name="id" value="<?= $s['id'] ?>">
         <button class="link"><span class="tag <?= $s['purpose'] === 'test' ? 'blue' : 'live' ?>"><?= PURPOSE[$s['purpose']] ?> ⇄</span></button></form></td>
       <td><?= (int)$s['n'] ?><?= $s['n_ai'] ? ' <span class="tag ai">' . (int)$s['n_ai'] . ' AI</span>' : '' ?></td>

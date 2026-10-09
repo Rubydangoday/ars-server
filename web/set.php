@@ -38,6 +38,7 @@ function validate_q(array $in): array {
 }
 
 function save_q(int $sid, array $v, ?int $id = null, ?int $pos = null): void {
+    set_unfinalize($sid);
     $cols = [$v['content'], $v['n_options']];
     foreach ($v['opts'] as $o) $cols[] = $o === '' ? null : $o;
     $cols[] = $v['correct']; $cols[] = $v['time_limit']; $cols[] = $v['topic']; $cols[] = $v['explanation'];
@@ -49,6 +50,19 @@ function save_q(int $sid, array $v, ?int $id = null, ?int $pos = null): void {
     }
 }
 
+if ($act === 'finalize') {                        // giáo viên xác nhận bộ câu hỏi đã đủ
+    $n = (int)qv('SELECT COUNT(*) FROM questions WHERE set_id=?', [$sid]);
+    $tn = trim((string)($_POST['target_n'] ?? ''));
+    $tn = $tn === '' ? null : max(1, min(255, (int)$tn));
+    $noans = (int)qv('SELECT COUNT(*) FROM questions WHERE set_id=? AND (correct IS NULL OR correct="")', [$sid]);
+    if ($n === 0) flash('Bộ chưa có câu hỏi nào.', 'err');
+    elseif ($tn !== null && $n < $tn) flash(t('Mới có {n}/{t} câu — chưa đủ số câu dự kiến.', ['n' => $n, 't' => $tn]), 'err');
+    elseif ($set['purpose'] === 'practice' && $noans) flash(t('Bài ôn tập cần đáp án để chấm: còn {n} câu chưa có đáp án đúng.', ['n' => $noans]), 'err');
+    else { q('UPDATE question_sets SET finalized_at=NOW(), target_n=? WHERE id=?', [$tn, $sid]); flash(t('✅ Đã xác nhận hoàn tất bộ câu hỏi ({n} câu).', ['n' => $n])); fx_once('success'); }
+    if ($tn !== null) q('UPDATE question_sets SET target_n=? WHERE id=?', [$tn, $sid]);
+    redirect("set.php?id=$sid#finalize");
+}
+if ($act === 'reopen') { set_unfinalize($sid); flash('Đã mở lại bộ câu hỏi để chỉnh sửa.'); redirect("set.php?id=$sid#finalize"); }
 if ($act === 'rename') {
     $title = trim($_POST['title'] ?? '');
     if ($title !== '') q('UPDATE question_sets SET title=? WHERE id=?', [$title, $sid]);
@@ -66,7 +80,7 @@ if ($act === 'save_q') {
 if ($act === 'delete_q') {
     $qid = (int)$_POST['id'];
     if (q1('SELECT 1 FROM session_questions WHERE question_id=?', [$qid]) || qv('SELECT 1 FROM homework_questions WHERE question_id=?',[$qid])) flash('Câu này đã được dùng trong buổi học, không xoá được.', 'err');
-    else { q('DELETE FROM questions WHERE id=? AND set_id=?', [$qid, $sid]); renumber($sid); }
+    else { q('DELETE FROM questions WHERE id=? AND set_id=?', [$qid, $sid]); renumber($sid); set_unfinalize($sid); }
     redirect("set.php?id=$sid");
 }
 if ($act === 'move') {
@@ -75,7 +89,7 @@ if ($act === 'move') {
     $i = array_search((int)$_POST['id'], array_map('intval', $qs), true);
     $j = $i + (($_POST['dir'] ?? '') === 'up' ? -1 : 1);
     if ($i !== false && $j >= 0 && $j < count($qs)) {
-        [$qs[$i], $qs[$j]] = [$qs[$j], $qs[$i]];
+        [$qs[$i], $qs[$j]] = [$qs[$j], $qs[$i]]; set_unfinalize($sid);
         foreach ($qs as $k => $id) q('UPDATE questions SET position=? WHERE id=?', [100 + $k, $id]);
         foreach ($qs as $k => $id) q('UPDATE questions SET position=? WHERE id=?', [$k + 1, $id]);
     }
@@ -103,7 +117,7 @@ if ($act === 'import_confirm') {
     $existing = $replace ? 0 : (int)qv('SELECT COUNT(*) FROM questions WHERE set_id=?', [$sid]);
     if ($set['purpose'] === 'test' && $existing + count($rows) > 64) { flash('Tối đa 64 câu mỗi bộ kiểm tra.', 'err'); redirect("set.php?id=$sid"); }
     db()->beginTransaction();
-    if ($replace) q('DELETE FROM questions WHERE set_id=?', [$sid]);
+    if ($replace) { q('DELETE FROM questions WHERE set_id=?', [$sid]); set_unfinalize($sid); }
     foreach ($rows as $r) save_q($sid, $r['v']);
     db()->commit();
     unset($_SESSION['import_q'][$sid]);
@@ -130,6 +144,45 @@ page_head($set['title'], 'sets.php');
 <p class="crumbs"><a href="sets.php">Bộ câu hỏi</a> › <?= h($set['title']) ?> <span class="tag <?= $set['purpose'] === 'test' ? 'blue' : 'live' ?>"><?= PURPOSE[$set['purpose']] ?></span></p>
 <form method="post" class="row title-edit"><?= csrf_field() ?><input type="hidden" name="action" value="rename">
   <input name="title" value="<?= h($set['title']) ?>" class="h1"><button>Đổi tên</button></form>
+<?php
+$nq = count($questions);
+$tn = (int)($set['target_n'] ?? 0);
+$fin = !empty($set['finalized_at']);
+$c_noans = count(array_filter($questions, fn($q) => !$q['correct']));
+$c_noexp = count(array_filter($questions, fn($q) => trim((string)$q['explanation']) === ''));
+$c_notopic = count(array_filter($questions, fn($q) => trim((string)$q['topic']) === ''));
+$seen = []; $c_dup = 0; foreach ($questions as $q) { $k = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $q['content']))); if (isset($seen[$k])) $c_dup++; $seen[$k] = 1; }
+$checks = [   // [ok?, nặng (chặn) hay nhẹ (nhắc), nội dung]
+    [$nq > 0 && (!$tn || $nq >= $tn), true, $tn ? t('Số câu: {n}/{t} câu dự kiến', ['n' => $nq, 't' => $tn]) : t('Số câu: {n}', ['n' => $nq])],
+    [$c_noans === 0, $set['purpose'] === 'practice', $c_noans ? t('{n} câu chưa có đáp án đúng', ['n' => $c_noans]) . ($set['purpose'] === 'test' ? ' ' . t('(sẽ là câu khảo sát ý kiến)') : '') : t('Mọi câu đều có đáp án đúng')],
+    [$c_dup === 0, false, $c_dup ? t('{n} câu trùng nội dung', ['n' => $c_dup]) : t('Không có câu trùng nhau')],
+    [$c_noexp === 0, false, $c_noexp ? t('{n} câu chưa có giải thích (học sinh xem khi ôn tập)', ['n' => $c_noexp]) : t('Mọi câu đều có giải thích')],
+    [$c_notopic === 0, false, $c_notopic ? t('{n} câu chưa gắn chủ đề (báo cáo theo chủ đề sẽ thiếu)', ['n' => $c_notopic]) : t('Mọi câu đều có chủ đề')],
+];
+$blocked = (bool)array_filter($checks, fn($c) => !$c[0] && $c[1]);
+?>
+<section class="card fin-card <?= $fin ? 'done' : '' ?>" id="finalize">
+  <div class="fin-head">
+    <span class="fin-ico"><?= $fin ? '✅' : '📝' ?></span>
+    <div><h2><?= $fin ? 'Đã hoàn tất bộ câu hỏi' : 'Đang soạn' ?></h2>
+      <p class="muted"><?= $fin ? t('Xác nhận lúc {d} · {n} câu. Thêm, sửa hoặc xoá câu sẽ đưa bộ về trạng thái “Đang soạn”.', ['d' => date('d/m/Y H:i', strtotime($set['finalized_at'])), 'n' => $nq])
+                            : 'Thêm đủ câu hỏi, xem lại bảng kiểm tra rồi bấm xác nhận hoàn tất.' ?></p></div>
+    <?php if ($fin): ?>
+      <form method="post" class="fin-act"><?= csrf_field() ?><input type="hidden" name="action" value="reopen"><button>✏️ Mở lại để sửa</button></form>
+    <?php endif; ?>
+  </div>
+  <ul class="fin-checks">
+    <?php foreach ($checks as [$ok, $hard, $txt]): ?><li class="<?= $ok ? 'ok' : ($hard ? 'bad' : 'warn') ?>"><i><?= $ok ? '✓' : ($hard ? '✕' : '!') ?></i><?= h($txt) ?></li><?php endforeach; ?>
+  </ul>
+  <?php if (!$fin): ?>
+  <form method="post" class="fin-form" onsubmit="return confirm(<?= h(json_encode(t('Xác nhận bộ “{s}” đã đủ {n} câu và sẵn sàng dùng?', ['s' => $set['title'], 'n' => $nq]), JSON_UNESCAPED_UNICODE)) ?>)">
+    <?= csrf_field() ?><input type="hidden" name="action" value="finalize">
+    <label>Số câu dự kiến <input type="number" name="target_n" min="1" max="255" value="<?= $tn ?: '' ?>" placeholder="<?= $nq ?>"></label>
+    <button class="primary" <?= $blocked ? 'disabled' : '' ?>>✓ Xác nhận hoàn tất bộ câu hỏi (<?= $nq ?> câu)</button>
+    <?php if ($blocked): ?><span class="small" style="color:#b42318">Sửa các mục ✕ trước khi xác nhận.</span><?php endif; ?>
+  </form>
+  <?php endif; ?>
+</section>
 <?php if ($used): ?><div class="flash warn">Bộ câu hỏi đã dùng trong buổi học. Sửa nội dung vẫn được, nhưng kết quả cũ sẽ hiển thị theo nội dung mới.</div><?php endif; ?>
 
 <?php if ($preview !== null): ?>

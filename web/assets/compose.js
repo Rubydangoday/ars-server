@@ -31,11 +31,22 @@
       const sel = dst[p], keep = sel.value || String(C.pre[p] || '');
       const mine = C.sets.filter((s) => s.purpose === p);
       sel.innerHTML = '<option value="">— chọn bộ ' + PURPOSE[p] + ' —</option>'
-        + mine.map((s) => `<option value="${s.id}">${esc(s.title)} (${s.n} ${_('câu')})</option>`).join('')
+        + mine.map((s) => `<option value="${s.id}">${esc(s.title)} (${s.n} ${_('câu')}${s.fin ? ' ✓' : ' · ' + _('đang soạn')})</option>`).join('')
         + `<option value="new">＋ Tạo bộ ${PURPOSE[p]} mới…</option>`;
       sel.value = mine.some((s) => String(s.id) === keep) ? keep : (mine[0] ? String(mine[0].id) : '');
       sel.dataset.prev = sel.value;
     }
+    finLinks();
+  }
+  // nút "Xem & xác nhận bộ": mở trang bộ câu hỏi ở khung kiểm tra / xác nhận hoàn tất
+  function finLinks() {
+    document.querySelectorAll('.fin-link').forEach((a) => {
+      const v = dst[a.dataset.for].value, s = C.sets.find((x) => String(x.id) === v);
+      a.hidden = !s; if (!s) return;
+      a.href = 'set.php?id=' + s.id + '#finalize';
+      a.textContent = s.fin ? '✓ ' + _('Đã hoàn tất') : '✓ ' + _('Xem & xác nhận bộ') + ` (${s.n})`;
+      a.classList.toggle('primary', !s.fin && s.n > 0);
+    });
   }
   async function createSet(p) {
     const name = prompt('Tên bộ ' + PURPOSE[p] + ' mới:', p === 'test' ? 'Kiểm tra — ' : 'Ôn tập — ');
@@ -47,7 +58,7 @@
   for (const p of ['test', 'practice']) {
     dst[p].addEventListener('change', async () => {
       const sel = dst[p];
-      if (sel.value !== 'new') { sel.dataset.prev = sel.value; return; }
+      if (sel.value !== 'new') { sel.dataset.prev = sel.value; finLinks(); return; }
       try {
         const id = await createSet(p);
         fillTargets();
@@ -56,7 +67,7 @@
       } catch (e) { alert(e.message); sel.value = sel.dataset.prev; }
     });
   }
-  function setCount(id, n) { const s = C.sets.find((x) => x.id === id); if (s) { s.n = n; const o = document.querySelector(`#dst-${s.purpose} option[value="${id}"]`); if (o) o.textContent = `${s.title} (${n} ${_('câu')})`; } }
+  function setCount(id, n) { const s = C.sets.find((x) => x.id === id); if (s) { s.n = n; s.fin = false; const o = document.querySelector(`#dst-${s.purpose} option[value="${id}"]`); if (o) o.textContent = `${s.title} (${n} ${_('câu')} · ${_('đang soạn')})`; finLinks(); } }
   function needTarget(p) {
     const v = dst[p].value;
     if (!v || v === 'new') { dst[p].focus(); dst[p].closest('label').animate([{ background: '#fff3d6' }, { background: 'transparent' }], 1200); alert('Chọn bộ ' + PURPOSE[p] + ' ở thanh phía trên trước.'); return null; }
@@ -346,6 +357,35 @@
   }
   form.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
   function allStems() { return [...document.querySelectorAll('#ai-chat .qc')].map((c) => c.q.content).slice(-40); }
+
+  // nút "Thêm tất cả vào bài kiểm tra": mọi câu AI gợi ý trong khung chat chưa thêm, chưa bỏ
+  const addAll = $('#ai-addall');
+  const pending = () => [...chat.querySelectorAll('.qc')].filter((c) => !c.classList.contains('removed') && !c.added.test);
+  function addAllCount() {
+    const n = pending().length;
+    $('#ai-addall-n').textContent = n; addAll.disabled = n === 0 || busy;
+    addAll.classList.toggle('primary', n > 0);
+  }
+  addAll.addEventListener('click', async () => {
+    const cards = pending(); if (!cards.length) return;
+    const s = C.sets.find((x) => String(x.id) === dst.test.value);
+    if (s && !confirm(_('Thêm {n} câu vào bài kiểm tra “{s}”?').replace('{n}', cards.length).replace('{s}', s.title))) return;
+    addAll.disabled = true;
+    await addCards(cards, 'test');
+    addAllCount();
+  });
+  new MutationObserver(addAllCount).observe(chat, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+
+  // khung AI vừa khít phần màn hình còn lại (ô nhập + nút luôn thấy), giãn dần khi cuộn rồi dính ở đầu trang
+  const aiPanel = $('#p-ai');
+  function fitPanel() {
+    if (innerWidth <= 1100) { aiPanel.style.height = ''; return; }
+    const top = Math.max(76, aiPanel.getBoundingClientRect().top);
+    aiPanel.style.height = Math.max(480, innerHeight - top - 12) + 'px';
+  }
+  let fitQ = 0;
+  const fitSoon = () => { if (!fitQ) fitQ = requestAnimationFrame(() => { fitQ = 0; fitPanel(); }); };
+  addEventListener('scroll', fitSoon, { passive: true }); addEventListener('resize', fitSoon); fitPanel();
 
   setMode('gen');
   fillTargets();

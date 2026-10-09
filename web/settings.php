@@ -25,14 +25,23 @@ if ($act === 'ai') {
     $p = $_POST['provider'] ?? 'offline';
     if (!isset(AI_PROVIDERS[$p])) $p = 'offline';
     setting_set('ai_provider', $p);
+    $bad = [];
+    $pwhash = (string)qv('SELECT password_hash FROM teachers WHERE id=?', [$t['id']]);
     foreach (['anthropic', 'gemini', 'openai'] as $x) {
         $k = trim($_POST['key_' . $x] ?? '');
-        if ($k !== '' && !preg_match('/^•+$/u', $k)) setting_set('ai_key_' . $x, $k);        // ô để trống = giữ key cũ
+        // Ô để trống = giữ key cũ. Bỏ qua chữ trình duyệt tự điền: mật khẩu đăng nhập ARS, chuỗi che •••, key sai dạng.
+        $autofill = $k !== '' && $pwhash !== '' && password_verify($k, $pwhash);
+        $fmt = ['anthropic' => '/^sk-ant-[A-Za-z0-9_\-]{20,}$/', 'gemini' => '/^AIza[0-9A-Za-z_\-]{30,}$/', 'openai' => '/^\S{8,}$/'][$x];
+        if ($k !== '' && !$autofill && !preg_match('/^•+$/u', $k)) {
+            if (preg_match($fmt, $k)) setting_set('ai_key_' . $x, $k);
+            else $bad[] = AI_PROVIDERS[$x][0];
+        }
         if (isset($_POST['clear_' . $x])) setting_set('ai_key_' . $x, null);
         setting_set('ai_model_' . $x, trim($_POST['model_' . $x] ?? '') ?: null);
         setting_set('ai_base_' . $x, trim($_POST['base_' . $x] ?? '') ?: null);
     }
-    flash('Đã lưu cài đặt trợ lý AI.');
+    if ($bad) flash(t('API key của {p} không đúng dạng nên chưa được lưu (key cũ vẫn giữ). Kiểm tra lại: key Gemini bắt đầu bằng AIza…, key Claude bắt đầu bằng sk-ant-…', ['p' => implode(', ', $bad)]), 'bad');
+    else flash('Đã lưu cài đặt trợ lý AI.');
     redirect('settings.php#ai');
 }
 if ($act === 'tutor') {
@@ -105,7 +114,7 @@ page_head('Cài đặt', 'settings.php');
         </div>
         <fieldset class="card" data-prov="anthropic" style="box-shadow:none"><legend class="small muted">Claude (Anthropic)</legend>
           <div class="row">
-            <label style="flex:2">API key <input name="key_anthropic" type="password" autocomplete="off" placeholder="<?= $masked('anthropic') ?: 'sk-ant-…' ?>"></label>
+            <label style="flex:2">API key <input name="key_anthropic" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" placeholder="<?= $masked('anthropic') ? te('Đã lưu — để trống nếu không đổi') : 'sk-ant-…' ?>"><?= $masked('anthropic') ? '<small class="key-saved">✓ ' . te('Đã lưu key') . ' <code>' . h($masked('anthropic')) . '</code></small>' : '' ?></label>
             <label style="flex:1">Model <input name="model_anthropic" list="m-anthropic" value="<?= h(setting('ai_model_anthropic', AI_PROVIDERS['anthropic'][1])) ?>"></label>
             <datalist id="m-anthropic"><option value="claude-sonnet-5"><option value="claude-opus-5"><option value="claude-haiku-4-5-20251001"></datalist>
           </div>
@@ -115,9 +124,9 @@ page_head('Cài đặt', 'settings.php');
         </fieldset>
         <fieldset class="card" data-prov="gemini" style="box-shadow:none"><legend class="small muted">Google Gemini</legend>
           <div class="row">
-            <label style="flex:2">API key <input name="key_gemini" type="password" autocomplete="off" placeholder="<?= $masked('gemini') ?: 'AIza…' ?>"></label>
+            <label style="flex:2">API key <input name="key_gemini" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" placeholder="<?= $masked('gemini') ? te('Đã lưu — để trống nếu không đổi') : 'AIza…' ?>"><?= $masked('gemini') ? '<small class="key-saved">✓ ' . te('Đã lưu key') . ' <code>' . h($masked('gemini')) . '</code></small>' : '' ?></label>
             <label style="flex:1">Model <input name="model_gemini" list="m-gemini" value="<?= h(setting('ai_model_gemini', AI_PROVIDERS['gemini'][1])) ?>"></label>
-            <datalist id="m-gemini"><option value="gemini-2.5-flash"><option value="gemini-2.5-flash-lite"><option value="gemini-2.5-pro"></datalist>
+            <datalist id="m-gemini"><option value="gemini-3.8-flash"><option value="gemini-3-flash-preview"><option value="gemini-2.5-flash-lite"></datalist>
           </div>
           <div class="row"><label style="flex:1">Địa chỉ API (để trống = mặc định) <input name="base_gemini" value="<?= h(setting('ai_base_gemini', '')) ?>" placeholder="https://generativelanguage.googleapis.com/v1beta/openai"></label>
             <?php if ($masked('gemini')): ?><label class="check"><input type="checkbox" name="clear_gemini"> Xoá key đã lưu</label><?php endif; ?></div>
@@ -126,7 +135,7 @@ page_head('Cài đặt', 'settings.php');
         </fieldset>
         <fieldset class="card" data-prov="openai" style="box-shadow:none"><legend class="small muted">OpenAI / Ollama / LM Studio</legend>
           <div class="row">
-            <label style="flex:2">API key (Ollama không cần) <input name="key_openai" type="password" autocomplete="off" placeholder="<?= $masked('openai') ?: 'sk-…' ?>"></label>
+            <label style="flex:2">API key (Ollama không cần) <input name="key_openai" type="password" autocomplete="new-password" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" placeholder="<?= $masked('openai') ? te('Đã lưu — để trống nếu không đổi') : 'sk-…' ?>"><?= $masked('openai') ? '<small class="key-saved">✓ ' . te('Đã lưu key') . ' <code>' . h($masked('openai')) . '</code></small>' : '' ?></label>
             <label style="flex:1">Model <input name="model_openai" list="m-openai" value="<?= h(setting('ai_model_openai', AI_PROVIDERS['openai'][1])) ?>"></label>
             <datalist id="m-openai"><option value="gpt-4o-mini"><option value="gpt-4o"><option value="qwen2.5:7b"><option value="llama3.1:8b"></datalist>
           </div>

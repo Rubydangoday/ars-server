@@ -13,7 +13,7 @@ try {
         $t0 = microtime(true);
         $r = ai_call($c, 'Trả lời đúng một từ.', 'Trả lời "OK".', null, 20);
         ai_log('test', $c, 'test', 1, $r, null, (int)((microtime(true) - $t0) * 1000));
-        json_out(['ok' => true, 'msg' => 'Kết nối thành công với ' . ai_label($c) . ' (' . round(microtime(true) - $t0, 1) . ' s): ' . mb_substr((string)$r['data'], 0, 40)]);
+        json_out(['ok' => true, 'msg' => 'Kết nối thành công với ' . ai_label($c) . ' (' . round(microtime(true) - $t0, 1) . ' s): ' . mb_substr((string)$r['data'], 0, 40) . (!empty($r['fallback']) ? ' — model ' . $c['model'] . ' đang quá tải, đã dùng tạm ' . $r['fallback'] : '')]);
     }
     // nguồn tài liệu: văn bản dán vào hoặc bài giảng của một buổi
     $source = trim((string)($_POST['source_text'] ?? ''));

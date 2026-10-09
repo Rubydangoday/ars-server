@@ -117,4 +117,33 @@ expect('Gemini' in j.get('text', ''), 'Teacher Q&A in basic mode explains how to
 j = t.post(BASE + 'api/ai.php', data={'csrf': tk, 'task': 'chat', 'prompt': '', 'turns': '[]'}).json()
 expect('error' in j, 'Empty teacher question rejected')
 
+# ---- lưu API key AI: ô trống giữ key cũ; mật khẩu do trình duyệt tự điền / key sai dạng không ghi đè
+def save_ai(**f):
+    return t.post(BASE + 'settings.php', data={'csrf': csrf(t, 'settings.php'), 'action': 'ai', 'provider': 'offline', **f})
+gkey = 'AIza' + 'Sy' + 'x' * 33
+save_ai(key_gemini=gkey, model_gemini='gemini-3-flash-preview')
+cur = lambda: sql1("SELECT v FROM settings WHERE k='ai_key_gemini'")['v']
+expect(cur() == gkey, 'Gemini key saved')
+save_ai(key_gemini='', model_gemini='gemini-3-flash-preview')
+expect(cur() == gkey, 'Empty key field keeps the saved key')
+save_ai(key_gemini=d['password'], model_gemini='gemini-3-flash-preview')
+expect(cur() == gkey, 'Browser-autofilled login password does not overwrite the key')
+r = save_ai(key_gemini='not-a-key', model_gemini='gemini-3-flash-preview')
+expect(cur() == gkey and 'không đúng dạng' in r.text, 'Malformed key rejected with a message, old key kept')
+r = t.get(BASE + 'settings.php'); expect('Đã lưu key' in r.text and gkey[-4:] in r.text and gkey not in r.text, 'Settings show saved key hint without revealing it')
+sql("DELETE FROM settings WHERE k IN ('ai_key_gemini','ai_model_gemini')")
+
+# ---- xác nhận hoàn tất bộ câu hỏi: kiểm tra đủ câu, sửa câu thì về "đang soạn"
+sp = 'set.php?id=%d' % d['set']
+fin = lambda: sql1('SELECT finalized_at FROM question_sets WHERE id=%s', (d['set'],))['finalized_at']
+r = t.get(BASE + sp); clean(r, 'set.php'); expect('id="finalize"' in r.text and 'Xác nhận hoàn tất bộ câu hỏi' in r.text, 'Set page shows finalize checklist')
+r = t.post(BASE + sp, data={'csrf': csrf(t, sp), 'action': 'finalize', 'target_n': 50}); expect(fin() is None and 'chưa đủ' in r.text, 'Cannot finalize with fewer questions than expected')
+r = t.post(BASE + sp, data={'csrf': csrf(t, sp), 'action': 'finalize', 'target_n': ''}); expect(fin() is not None and 'Đã hoàn tất bộ câu hỏi' in r.text, 'Finalize set')
+expect('✓ Hoàn tất' in t.get(BASE + 'sets.php').text, 'Sets list shows finalized status')
+tk = BeautifulSoup(t.get(BASE + 'compose.php').text, 'html.parser').select_one('meta[name=csrf]')['content']
+j = t.post(BASE + 'api/qadd.php', data={'csrf': tk, 'set_id': d['set'], 'questions': json.dumps([{'content': 'Câu thêm sau khi chốt?', 'options': ['Có', 'Không'], 'correct': 'A'}])}).json()
+expect(fin() is None, 'Adding a question puts the set back to drafting')
+t.post(BASE + sp, data={'csrf': csrf(t, sp), 'action': 'finalize', 'target_n': ''}); t.post(BASE + sp, data={'csrf': csrf(t, sp), 'action': 'reopen'})
+expect(fin() is None, 'Reopen set for editing')
+
 print(json.dumps({'passed': len(checks), 'checks': checks}, ensure_ascii=False))

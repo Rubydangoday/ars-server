@@ -165,7 +165,7 @@ page_head($c['name'], 'classes.php');
     </label>
     <label><?= te('Bộ câu hỏi') ?>
       <select name="set_id"><?php foreach (PURPOSE as $pk => $pl): ?><optgroup label="<?= te('Bộ') ?> <?= h(mb_strtolower(t($pl))) ?>">
-        <?php foreach ($sets as $s): if ($s['purpose'] !== $pk) continue; ?><option value="<?= $s['id'] ?>"><?= h($s['title']) ?> (<?= (int)$s['n'] ?> <?= te('câu)') ?></option><?php endforeach; ?></optgroup><?php endforeach; ?></select>
+        <?php foreach ($sets as $s): if ($s['purpose'] !== $pk) continue; ?><option value="<?= $s['id'] ?>"><?= h($s['title']) ?> (<?= (int)$s['n'] ?> <?= te('câu') ?><?= !empty($s['finalized_at']) ? ' ✓' : ' · ' . te('đang soạn') ?>)</option><?php endforeach; ?></optgroup><?php endforeach; ?></select>
     </label>
     <label><?= te('Loại') ?>
       <select name="kind"><option value="class"><?= te('Buổi học (học sinh xem lại ngay sau buổi)') ?></option><option value="test"><?= te('Bài kiểm tra (xem lại sau khi GV công bố)') ?></option></select>
@@ -282,7 +282,7 @@ page_head($c['name'], 'classes.php');
   <?php endif; ?>
   <?php if ($sets): ?>
   <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="action" value="assign">
-    <label><?= te('Bộ câu hỏi') ?> <select name="set_id"><?php foreach ($sets as $s): ?><option value="<?= $s['id'] ?>"><?= h($s['title']) ?> (<?= (int)$s['n'] ?> <?= te('câu)') ?></option><?php endforeach; ?></select></label>
+    <label><?= te('Bộ câu hỏi') ?> <select name="set_id"><?php foreach ($sets as $s): ?><option value="<?= $s['id'] ?>"><?= h($s['title']) ?> (<?= (int)$s['n'] ?> <?= te('câu') ?><?= !empty($s['finalized_at']) ? ' ✓' : ' · ' . te('đang soạn') ?>)</option><?php endforeach; ?></select></label>
     <label><?= te('Tên hiển thị') ?> <input name="title" placeholder="<?= te('Ôn tập chương 3') ?>"></label>
     <label><?= te('Loại') ?> <select name="kind"><option value="pre_test"><?= te('Ôn trước kiểm tra') ?></option><option value="homework"><?= te('Bài tập về nhà') ?></option></select></label>
     <label><?= te('Chế độ') ?> <select name="mode"><option value="practice"><?= te('Luyện tập') ?></option><option value="exam"><?= te('Như kiểm tra') ?></option></select></label>

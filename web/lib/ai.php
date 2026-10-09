@@ -9,7 +9,7 @@ declare(strict_types=1);
 const AI_PROVIDERS = [
     'offline'   => ['Cơ bản (không cần Internet)', ''],
     'anthropic' => ['Claude (Anthropic)', 'claude-sonnet-5'],
-    'gemini'    => ['Google Gemini', 'gemini-2.5-flash'],
+    'gemini'    => ['Google Gemini', 'gemini-3.8-flash'],
     'openai'    => ['OpenAI / Ollama / LM Studio', 'gpt-4o-mini'],
 ];
 
@@ -93,7 +93,16 @@ function ai_question_schema(int $n_options): array {
 }
 
 // ---------------------------------------------------------------- gọi API
+/** Gọi API dịch vụ AI; tự thử lại khi dịch vụ quá tải / vượt hạn mức tạm thời (429, 500, 503, 529): chờ 2 s rồi 5 s. */
 function ai_http(string $url, array $headers, array $body, int $timeout = 170): array {
+    foreach ([0, 2, 5] as $i => $wait) {
+        if ($wait) sleep($wait);
+        try { return ai_http_once($url, $headers, $body, $timeout); }
+        catch (RuntimeException $e) { if ($i === 2 || !in_array($e->getCode(), [429, 500, 503, 529], true)) throw $e; }
+    }
+    throw new RuntimeException('Dịch vụ AI không phản hồi.');
+}
+function ai_http_once(string $url, array $headers, array $body, int $timeout): array {
     if (!function_exists('curl_init')) throw new RuntimeException('Máy chủ thiếu PHP cURL (sudo apt install php-curl rồi khởi động lại Apache).');
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -110,15 +119,29 @@ function ai_http(string $url, array $headers, array $body, int $timeout = 170): 
     if ($code >= 400 || !is_array($j)) {
         $msg = is_array($j) ? ($j['error']['message'] ?? $j['error'] ?? json_encode($j)) : mb_substr((string)$raw, 0, 200);
         if (is_array($msg)) $msg = json_encode($msg, JSON_UNESCAPED_UNICODE);
-        $hint = $code === 401 ? ' (API key không đúng)' : ($code === 429 ? ' (vượt hạn mức, thử lại sau ít phút)' : ($code === 404 ? ' (sai tên model hoặc địa chỉ)' : ''));
-        throw new RuntimeException("Dịch vụ AI báo lỗi $code$hint: $msg");
+        $hint = $code === 401 ? ' (API key không đúng)' : ($code === 429 ? ' (vượt hạn mức, thử lại sau ít phút)' : ($code === 404 ? ' (sai tên model hoặc địa chỉ)'
+              : ($code === 403 ? ' (dự án / tài khoản bị từ chối — tạo key bằng Gmail cá nhân ở dự án mới)' : (in_array($code, [503, 529], true) ? ' (model đang quá tải — thử lại sau hoặc đổi model nhẹ hơn)' : ''))));
+        throw new RuntimeException("Dịch vụ AI báo lỗi $code$hint: $msg", $code);
     }
     return $j;
 }
 
 /** Gọi mô hình. $user: chuỗi hoặc danh sách [['role'=>'user'|'assistant','content'=>…], …] (hội thoại).
  *  $schema != null → yêu cầu trả JSON theo schema. Trả về ['data' => array|string, 'in' => , 'out' => ]. */
+/** Model Gemini dự phòng khi model đang chọn quá tải (503) / vượt hạn mức (429). */
+const GEMINI_FALLBACK = ['gemini-3-flash-preview', 'gemini-2.5-flash-lite'];
 function ai_call(array $c, string $system, $user, ?array $schema, int $max_tokens = 8000): array {
+    if ($c['provider'] === 'gemini' && empty($c['no_fallback'])) {
+        try { return ai_call($c + ['no_fallback' => true], $system, $user, $schema, $max_tokens); }
+        catch (RuntimeException $e) {
+            if (!in_array($e->getCode(), [429, 503, 529], true)) throw $e;
+            foreach (array_diff(GEMINI_FALLBACK, [$c['model']]) as $m) {
+                try { return ai_call(['model' => $m, 'no_fallback' => true] + $c, $system, $user, $schema, $max_tokens) + ['fallback' => $m]; }
+                catch (RuntimeException $e2) { if (!in_array($e2->getCode(), [404, 429, 503, 529], true)) throw $e2; }
+            }
+            throw $e;
+        }
+    }
     $msgs = is_array($user) ? array_values($user) : [['role' => 'user', 'content' => $user]];
     if ($c['provider'] === 'anthropic') {
         if ($c['key'] === '') throw new RuntimeException('Chưa nhập API key của Claude. Vào Cài đặt → Trợ lý AI.');
@@ -142,23 +165,74 @@ function ai_call(array $c, string $system, $user, ?array $schema, int $max_token
         $sys = $system . ($schema ? "\n\nChỉ trả về một đối tượng JSON hợp lệ theo schema sau, không thêm chữ nào khác:\n" . json_encode($schema, JSON_UNESCAPED_UNICODE) : '');
         $body = ['model' => $c['model'], 'temperature' => 0.7,
                  'messages' => array_merge([['role' => 'system', 'content' => $sys]], $msgs)];
-        if ($schema) $body['response_format'] = ['type' => 'json_object'];
-        $j = ai_http($c['base'] . '/chat/completions', $c['key'] !== '' ? ['authorization: Bearer ' . $c['key']] : [], $body);
+        $auth = $c['key'] !== '' ? ['authorization: Bearer ' . $c['key']] : [];
+        if ($schema) {
+            // Gemini: đầu ra có cấu trúc (API bảo đảm JSON hợp lệ); dịch vụ khác / khi bị từ chối: chế độ JSON thường
+            $body['response_format'] = $c['provider'] === 'gemini' ? ['type' => 'json_schema', 'json_schema' => ['name' => 'ket_qua', 'schema' => $schema]] : ['type' => 'json_object'];
+            try { $j = ai_http($c['base'] . '/chat/completions', $auth, $body); }
+            catch (RuntimeException $e) {
+                if ($e->getCode() !== 400 || $body['response_format']['type'] !== 'json_schema') throw $e;
+                $body['response_format'] = ['type' => 'json_object']; $j = ai_http($c['base'] . '/chat/completions', $auth, $body);
+            }
+            $text = (string)($j['choices'][0]['message']['content'] ?? '');
+            try { $data = ai_json_from_text($text); }
+            catch (RuntimeException $e) {                 // thử lại một lần, nhắc rõ quy tắc JSON
+                $body['messages'][] = ['role' => 'assistant', 'content' => mb_substr($text, 0, 4000)];
+                $body['messages'][] = ['role' => 'user', 'content' => 'Câu trả lời trên không phải JSON hợp lệ. Trả lại DUY NHẤT một đối tượng JSON hợp lệ theo schema, không có ```, mọi dấu \\ trong công thức LaTeX phải viết thành \\\\ (ví dụ "\\\\frac{a}{b}").'];
+                $j = ai_http($c['base'] . '/chat/completions', $auth, $body);
+                $text = (string)($j['choices'][0]['message']['content'] ?? '');
+                $data = ai_json_from_text($text);
+            }
+            return ['data' => $data, 'in' => $j['usage']['prompt_tokens'] ?? null, 'out' => $j['usage']['completion_tokens'] ?? null];
+        }
+        $j = ai_http($c['base'] . '/chat/completions', $auth, $body);
         $text = (string)($j['choices'][0]['message']['content'] ?? '');
-        return ['data' => $schema ? ai_json_from_text($text) : trim($text), 'in' => $j['usage']['prompt_tokens'] ?? null, 'out' => $j['usage']['completion_tokens'] ?? null];
+        return ['data' => trim($text), 'in' => $j['usage']['prompt_tokens'] ?? null, 'out' => $j['usage']['completion_tokens'] ?? null];
     }
     throw new RuntimeException('Chế độ cơ bản không gọi mô hình AI.');
 }
 
+/**
+ * Đọc JSON từ câu trả lời của mô hình. Chịu được: khối ```json, chữ thừa trước/sau, dấu "\" của LaTeX chưa nhân đôi
+ * (\frac, \(, \times… — JSON hiểu nhầm \f \t \n), dấu phẩy thừa, câu trả lời bị cắt giữa chừng (giữ các câu hỏi còn nguyên).
+ */
 function ai_json_from_text(string $t): array {
-    $t = trim(preg_replace('/^```(?:json)?|```$/m', '', $t));
-    $j = json_decode($t, true);
-    if (is_array($j)) return $j;
-    $a = strpos($t, '{'); $b = strrpos($t, '}');
-    if ($a !== false && $b > $a && is_array($j = json_decode(substr($t, $a, $b - $a + 1), true))) return $j;
-    $a = strpos($t, '['); $b = strrpos($t, ']');
-    if ($a !== false && $b > $a && is_array($j = json_decode(substr($t, $a, $b - $a + 1), true))) return ['questions' => $j];
+    $t = trim(preg_replace('/^\s*```(?:json)?\s*|\s*```\s*$/m', '', $t));
+    foreach ([$t, ai_fix_json($t)] as $try) {
+        $j = json_decode($try, true);
+        if (is_array($j)) return array_is_list($j) ? ['questions' => $j] : $j;
+        $a = strpos($try, '{'); $b = strrpos($try, '}');
+        if ($a !== false && $b > $a && is_array($j = json_decode(substr($try, $a, $b - $a + 1), true))) return $j;
+        $a = strpos($try, '['); $b = strrpos($try, ']');
+        if ($a !== false && $b > $a && is_array($j = json_decode(substr($try, $a, $b - $a + 1), true))) return ['questions' => $j];
+    }
+    // bị cắt giữa chừng: lấy từng đối tượng câu hỏi còn nguyên
+    $fixed = ai_fix_json($t); $qs = [];
+    if (preg_match_all('/\{(?:[^{}"]|"(?:[^"\\\\]|\\\\.)*")*\}/u', $fixed, $m))
+        foreach ($m[0] as $o) if (is_array($q = json_decode($o, true)) && isset($q['content'])) $qs[] = $q;
+    if ($qs) return ['questions' => $qs];
     throw new RuntimeException('Mô hình AI trả về dữ liệu không đúng định dạng. Thử lại hoặc giảm số câu.');
+}
+/** Sửa lỗi JSON hay gặp ở mô hình: "\" lẻ trong chuỗi (LaTeX), xuống dòng thật trong chuỗi, dấu phẩy thừa trước } ]. */
+function ai_fix_json(string $t): string {
+    $out = ''; $in = false; $n = strlen($t);
+    for ($i = 0; $i < $n; $i++) {
+        $ch = $t[$i];
+        if (!$in) { $out .= $ch; if ($ch === '"') $in = true; continue; }
+        if ($ch === '"') { $out .= $ch; $in = false; continue; }
+        if ($ch === "\n") { $out .= '\n'; continue; }
+        if ($ch === "\r") continue;
+        if ($ch === "\t") { $out .= '\t'; continue; }
+        if ($ch !== '\\') { $out .= $ch; continue; }
+        $nx = $t[$i + 1] ?? '';
+        $nx2 = $t[$i + 2] ?? '';
+        if ($nx === '\\' || $nx === '"' || $nx === '/') { $out .= $ch . $nx; $i++; continue; }
+        if ($nx === 'u' && preg_match('/^[0-9a-fA-F]{4}$/', substr($t, $i + 2, 4))) { $out .= substr($t, $i, 6); $i += 5; continue; }
+        // \n \t \r \b \f là ký tự điều khiển chỉ khi KHÔNG phải đầu một lệnh LaTeX (\neq, \times, \frac, \beta, \right…)
+        if (strpos('bfnrt', $nx) !== false && $nx !== '' && !ctype_alpha($nx2)) { $out .= $ch . $nx; $i++; continue; }
+        $out .= '\\\\';                                   // "\" lẻ (LaTeX: \frac, \(, \alpha…) → "\\"
+    }
+    return preg_replace('/,\s*([}\]])/', '$1', $out);
 }
 
 /** Chuẩn hoá một câu hỏi (từ AI hoặc từ file) về dạng chung của web. */

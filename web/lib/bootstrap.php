@@ -151,6 +151,10 @@ function own_class(int $id): array {
     if (!$c) { http_response_code(404); exit('Không tìm thấy lớp.'); }
     return $c;
 }
+/** Bộ câu hỏi bị sửa (thêm / xoá / sửa / đổi thứ tự câu) → về trạng thái "Đang soạn" để giáo viên xác nhận lại. */
+function set_unfinalize(int $set_id): void {
+    try { q('UPDATE question_sets SET finalized_at=NULL WHERE id=? AND finalized_at IS NOT NULL', [$set_id]); } catch (Throwable $e) {}   // chưa chạy migration 011
+}
 function own_set(int $id): array {
     $s = q1('SELECT * FROM question_sets WHERE id=? AND teacher_id=?', [$id, me()['id']]);
     if (!$s) { http_response_code(404); exit('Không tìm thấy bộ câu hỏi.'); }

@@ -5,7 +5,7 @@ require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/ai.php';
 $t = require_login();
 
-$sets = qall('SELECT qs.id, qs.title, qs.purpose, (SELECT COUNT(*) FROM questions q WHERE q.set_id=qs.id) AS n '
+$sets = qall('SELECT qs.id, qs.title, qs.purpose, qs.finalized_at, (SELECT COUNT(*) FROM questions q WHERE q.set_id=qs.id) AS n '
            . 'FROM question_sets qs WHERE qs.teacher_id=? ORDER BY qs.id DESC', [$t['id']]);
 $lessons = qall('SELECT l.id, l.no, l.title, l.class_id, l.quiz_set_id, c.name AS class_name, '
               . '(l.lecture_text IS NOT NULL AND l.lecture_text<>"") AS has_text, (l.key_points IS NOT NULL AND l.key_points<>"") AS has_kp '
@@ -30,9 +30,9 @@ page_head('Soạn câu hỏi', 'compose.php');
 
 <div class="target-bar">
   <label>Bài kiểm tra (chiếu lên lớp, dùng clicker)
-    <select id="dst-test" data-purpose="test"></select></label>
+    <span class="dst-row"><select id="dst-test" data-purpose="test"></select><a class="btn small fin-link" data-for="test" hidden>✓ Xem &amp; xác nhận bộ</a></span></label>
   <label>Bài ôn tập (học sinh làm trên web)
-    <select id="dst-practice" data-purpose="practice"></select></label>
+    <span class="dst-row"><select id="dst-practice" data-purpose="practice"></select><a class="btn small fin-link" data-for="practice" hidden>✓ Xem &amp; xác nhận bộ</a></span></label>
   <span class="hint">Câu hỏi chỉ được lưu khi bấm <b>✓ Thêm vào…</b> dưới từng câu (hoặc “Thêm tất cả”). Có thể bấm <b>Sửa</b> để chỉnh trước khi thêm.</span>
 </div>
 
@@ -149,6 +149,7 @@ page_head('Soạn câu hỏi', 'compose.php');
             <option value="lesson:<?= $l['id'] ?>" <?= $pre['lesson'] === (int)$l['id'] ? 'selected' : '' ?> <?= $l['has_text'] || $l['has_kp'] ? '' : 'disabled' ?>><?= h(lesson_label($l)) ?><?= $l['has_text'] ? '' : ($l['has_kp'] ? ' (chỉ có kiến thức trọng tâm)' : ' — chưa có bài giảng') ?></option>
           <?php endforeach; if ($cur !== null) echo '</optgroup>'; ?>
         </select></label>
+        <button type="button" class="ai-addall" id="ai-addall" disabled title="Thêm mọi câu AI đã gợi ý ở trên (trừ câu đã thêm / đã bỏ) vào bộ kiểm tra đang chọn ở thanh trên cùng">✓ Thêm tất cả vào bài kiểm tra <b id="ai-addall-n">0</b></button>
       </div>
       <div class="ai-box">
         <textarea id="ai-prompt" rows="1" placeholder="Mô tả câu hỏi cần soạn, ví dụ: 5 câu về các mức QoS của MQTT, có 1 câu tình huống"></textarea>
@@ -160,7 +161,7 @@ page_head('Soạn câu hỏi', 'compose.php');
 </div>
 
 <script>
-window.ARS_COMPOSE = <?= json_encode(['sets' => array_map(fn($s) => ['id' => (int)$s['id'], 'title' => $s['title'], 'purpose' => $s['purpose'], 'n' => (int)$s['n']], $sets),
+window.ARS_COMPOSE = <?= json_encode(['sets' => array_map(fn($s) => ['id' => (int)$s['id'], 'title' => $s['title'], 'purpose' => $s['purpose'], 'n' => (int)$s['n'], 'fin' => !empty($s['finalized_at'])], $sets),
     'pre' => $pre, 'letters' => LETTERS, 'difficulty' => DIFFICULTY], JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <script src="assets/<?= av('qeditor.js') ?>"></script>
