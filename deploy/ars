@@ -10,15 +10,15 @@ case "${1:-}" in
     ;;
   logs)   journalctl -u ars-ingest -u ars-bridge -f -n 50 ;;
   restart) sudo systemctl restart ars-ingest ars-bridge && echo "đã khởi động lại ingest + bridge" ;;
-  sim)    # chạy thử không cần phần cứng: ars sim [số clicker] [room] [ble|wifi]
-    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/tools/sim_clickers.py --room "${3:-1}" -n "${2:-30}" --via "${4:-ble}" --duration 300 ;;
+  sim)    # chạy thử không cần phần cứng: ars sim [số Remote] [room] — giả lập Remote + gateway nRF52840
+    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/tools/sim_clickers.py --room "${3:-1}" -n "${2:-30}" --duration 300 ;;
   links)  # in các link cố định cho giáo viên / học sinh
     lan=$(ini lan name); lan=${lan:-ars.local}; ip=$(hostname -I 2>/dev/null | awk '{print $1}')
     pub=$(sudo mysql -N ars -e "SELECT v FROM settings WHERE k='public_url'" 2>/dev/null)
     echo "Trong mạng nội bộ (tên cố định): http://$lan/gv   ·   http://$lan/hs"
     echo "Trong mạng nội bộ (IP):          http://$ip/gv   ·   http://$ip/hs"
     [ -n "$pub" ] && echo "Qua Internet (mọi nơi):          $pub/gv   ·   $pub/hs" || echo "Qua Internet: chưa bật — sudo ars public on"
-    echo "Clicker Wi-Fi: mqtt://$lan:$(ini mqtt_public lan_port)  user $(ini mqtt_public user)" ;;
+    echo "Gateway nRF52840 qua trình duyệt: ws://$lan/mqtt  user $(ini mqtt_public user)" ;;
   public) # link Internet cố định bằng Tailscale Funnel: ars public on | off | status
     command -v tailscale >/dev/null || { echo "Chưa cài Tailscale. Cài:  curl -fsSL https://tailscale.com/install.sh | sh  rồi  sudo tailscale up"; exit 1; }
     case "${2:-status}" in
@@ -63,5 +63,5 @@ case "${1:-}" in
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | sim [n] [room] [ble|wifi] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac

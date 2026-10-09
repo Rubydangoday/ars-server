@@ -5,7 +5,7 @@
 #   - mã nguồn ở /opt/ars-server, cấu hình /opt/ars-server/config.ini (mật khẩu DB tự sinh)
 #   - web: http://<máy>/gv (giáo viên)  http://<máy>/hs (học sinh)  — trong LAN còn có tên cố định http://ars.local/…
 #   - dịch vụ systemd: ars-ingest (luôn chạy), ars-bridge (đọc gateway USB), ars-mdns (tên ars.local)
-#   - MQTT: 1883 trong máy, 1884 LAN cho clicker Wi-Fi, WebSocket /mqtt qua Apache
+#   - MQTT: 1883 trong máy, WebSocket /mqtt qua Apache (gateway nRF52840 cắm máy giáo viên)
 #   - link Internet cố định (tuỳ chọn): sudo ars public on   (Tailscale Funnel)
 set -euo pipefail
 
@@ -62,6 +62,7 @@ mysql ars < "$DST/db/migrate_008_student_selfsignup.sql"
 mysql ars < "$DST/db/migrate_009_language.sql"
 mysql ars < "$DST/db/migrate_010_tutor_chats.sql"
 mysql ars < "$DST/db/migrate_011_set_finalize.sql"
+mysql ars < "$DST/db/migrate_012_nrf_only.sql"
 
 # thư mục lưu file bài giảng (ngoài /opt để cập nhật mã không xoá mất)
 UPL=/var/lib/ars/uploads
@@ -73,17 +74,17 @@ for H in localhost 127.0.0.1; do             # PHP/Python nối qua TCP 127.0.0.
             GRANT ALL PRIVILEGES ON ars.* TO 'ars'@'$H'; FLUSH PRIVILEGES;"
 done
 
-# tài khoản MQTT cho clicker Wi-Fi và gateway USB qua trình duyệt (giữ nguyên nếu đã có)
+# tài khoản MQTT cho gateway nRF52840 nối qua trình duyệt (giữ nguyên nếu đã có)
 if ! grep -q '^\[mqtt_public\]' "$CFG"; then
     MQPASS=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)
-    printf '\n[mqtt_public]\n; clicker Wi-Fi (cổng LAN 1884) và gateway USB qua trình duyệt (WebSocket /mqtt)\nuser = clicker\npassword = %s\nlan_port = 1884\nws_path = /mqtt\n' "$MQPASS" >> "$CFG"
+    printf '\n[mqtt_public]\n; gateway nRF52840 cắm vào máy giáo viên, nối về máy chủ qua trình duyệt (WebSocket /mqtt)\nuser = clicker\npassword = %s\nws_path = /mqtt\n' "$MQPASS" >> "$CFG"
 fi
 grep -q '^\[lan\]' "$CFG" || printf '\n[lan]\n; tên cố định trong mạng nội bộ (mDNS), đổi bằng: sudo ars lan-name ten.local\nname = ars.local\n' >> "$CFG"
 ini() { awk -v s="[$1]" -v k="$2" '$0==s{f=1;next} /^\[/{f=0} f && $1==k {sub(/^[^=]*= */,""); print; exit}' "$CFG"; }
 MQUSER=$(ini mqtt_public user); MQPASS=$(ini mqtt_public password); LANNAME=$(ini lan name)
 mysql ars -e "INSERT INTO settings (k,v) VALUES ('lan_name','$LANNAME') ON DUPLICATE KEY UPDATE v=VALUES(v)"
 
-say "4b/7 Mosquitto: cổng LAN 1884 + WebSocket cho clicker Wi-Fi"
+say "4b/7 Mosquitto: WebSocket /mqtt cho gateway nối qua trình duyệt"
 cp "$DST/deploy/mosquitto-ars.conf" /etc/mosquitto/conf.d/ars.conf
 rm -f /etc/mosquitto/ars_passwd
 mosquitto_passwd -b -c /etc/mosquitto/ars_passwd "$MQUSER" "$MQPASS" 2>/dev/null
@@ -93,9 +94,9 @@ chmod 640 /etc/mosquitto/ars_passwd /etc/mosquitto/ars_acl
 if [ $HAS_SYSTEMD = 1 ]; then systemctl restart mosquitto
 else pkill -x mosquitto 2>/dev/null || true; sleep 1; mosquitto -d -c /etc/mosquitto/mosquitto.conf; fi
 sleep 1
-if mosquitto_pub -h 127.0.0.1 -p 1884 -u "$MQUSER" -P "$MQPASS" -t ars/_test -m ok 2>/dev/null; then
-    echo "   MQTT LAN 1884: OK (tài khoản $MQUSER)"
-else echo "   ! MQTT LAN 1884 chưa chạy — xem: journalctl -u mosquitto"; fi
+if mosquitto_pub -h 127.0.0.1 -p 1883 -t ars/_test -m ok 2>/dev/null; then
+    echo "   MQTT: OK (WebSocket /mqtt dùng tài khoản $MQUSER)"
+else echo "   ! MQTT chưa chạy — xem: journalctl -u mosquitto"; fi
 
 say "5/7 Cấu hình Apache: /gv, /hs, /ars, /mqtt"
 a2enmod -q proxy proxy_http proxy_wstunnel >/dev/null
@@ -124,7 +125,6 @@ fi
 say "7/7 Tường lửa"
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
     ufw allow 80/tcp >/dev/null && echo "   đã mở cổng 80 cho điện thoại học sinh trong mạng LAN"
-    ufw allow 1884/tcp >/dev/null && echo "   đã mở cổng 1884 cho clicker Wi-Fi"
     ufw allow 5353/udp >/dev/null && echo "   đã mở mDNS (tên $LANNAME)"
 else
     echo "   ufw không bật — bỏ qua"
@@ -142,5 +142,5 @@ else echo "   Internet  : chưa bật — chạy  sudo ars public on  để có 
 echo " Lệnh tiện ích: ars links | ars status | ars logs | ars watch | ars db | ars sim 30 | ars public on"
 echo " Gateway Bluetooth: cắm USB máy chủ (sửa [gateway] serial trong $CFG nếu không phải /dev/ttyACM0,"
 echo "          rồi sudo systemctl restart ars-bridge) — hoặc cắm máy GV, bấm \"Gateway USB máy này\" trên web."
-echo " Clicker Wi-Fi: mqtt://$LANNAME:1884, tài khoản $MQUSER (mật khẩu trong $CFG, mục [mqtt_public])."
+echo " Gateway nRF52840: cắm USB vào máy chủ (dịch vụ ars-bridge) hoặc vào máy giáo viên (bảng điều khiển → Gateway USB máy này)."
 echo "────────────────────────────────────────────────────────────"

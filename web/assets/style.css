@@ -1228,3 +1228,8 @@ body.app .ai-addall { min-height: 32px; padding: 4px 12px; font-size: 13px; alig
 body.app .ai-addall b { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 99px; background: #eef2f7; color: #344054; font-size: 12px; }
 body.app .ai-addall.primary b { background: rgba(255,255,255,.25); color: #fff; }
 .ai-opts.chat-mode .ai-addall { display: none; }
+/* v19: cách cắm gateway nRF52840 (Cài đặt → Kết nối clicker) */
+.gw-ways { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0 0; }
+.gw-ways .mode { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid #e9ecf2; border-radius: 14px; background: #fafbfd; cursor: default; }
+.gw-ways .mode .ico { margin-right: 6px; }
+@media (max-width: 760px) { .gw-ways { grid-template-columns: 1fr; } }

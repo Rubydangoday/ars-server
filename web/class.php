@@ -39,11 +39,6 @@ if ($act === 'delete_class') {
     q('DELETE FROM classes WHERE id=?', [$cid]);
     flash(t('Đã xoá lớp.')); redirect('classes.php');
 }
-if ($act === 'conn_mode') {
-    $m = ($_POST['conn_mode'] ?? 'ble') === 'wifi' ? 'wifi' : 'ble';
-    q('UPDATE classes SET conn_mode=? WHERE id=?', [$m, $cid]);
-    flash(t('Lớp dùng kết nối') . ' ' . CONN_MODES[$m] . '.'); redirect("class.php?id=$cid");
-}
 if ($act === 'start_session') {
     $set = own_set((int)($_POST['set_id'] ?? 0));
     if ($busy = q1('SELECT c.name, t.full_name FROM sessions s JOIN classes c ON c.id=s.class_id JOIN teachers t ON t.id=c.teacher_id '
@@ -51,8 +46,7 @@ if ($act === 'start_session') {
         flash(t('Mã lớp (room) {r} đang chạy buổi học của lớp “{c}” ({t}). Đổi mã lớp ở “Thông tin lớp” rồi bắt đầu lại.', ['r' => $c['room_id'], 'c' => $busy['name'], 't' => $busy['full_name']]), 'err');
         redirect("class.php?id=$cid");
     }
-    $cm = ($_POST['conn_mode'] ?? $c['conn_mode']) === 'wifi' ? 'wifi' : 'ble';
-    q('UPDATE classes SET conn_mode=? WHERE id=?', [$cm, $cid]);
+    q('UPDATE classes SET conn_mode="ble" WHERE id=? AND conn_mode<>"ble"', [$cid]);   // chỉ dùng Remote nRF52840 (Bluetooth)
     if (!q1('SELECT 1 FROM questions WHERE set_id=?', [$set['id']])) { flash(t('Bộ câu hỏi chưa có câu nào.'), 'err'); redirect("class.php?id=$cid"); }
     q('UPDATE sessions SET status="ended", ended_at=NOW() WHERE class_id=? AND status="running"', [$cid]);
     $kind = ($_POST['kind'] ?? 'class') === 'test' ? 'test' : 'class';
@@ -143,7 +137,7 @@ page_head($c['name'], 'classes.php');
 ?>
 <p class="crumbs"><a href="classes.php"><?= te('Lớp học') ?></a> › <?= h($c['name']) ?></p>
 <div class="page-head">
-  <h1><?= h($c['name']) ?> <span class="tag">room <?= (int)$c['room_id'] ?></span> <span class="tag topic"><?= $c['conn_mode'] === 'wifi' ? '📶 Wi-Fi' : '🔵 Bluetooth' ?></span></h1>
+  <h1><?= h($c['name']) ?> <span class="tag">room <?= (int)$c['room_id'] ?></span> <span class="tag topic">🔵 Bluetooth · nRF52840</span></h1>
   <div class="quick" style="margin:0">
     <a class="btn" href="lessons.php?class=<?= $cid ?>">📚 <?= te('10 buổi học & bài giảng') ?></a>
     <a class="btn" href="compose.php"><?= te('✍ Soạn câu hỏi') ?></a>
@@ -171,7 +165,7 @@ page_head($c['name'], 'classes.php');
       <select name="kind"><option value="class"><?= te('Buổi học (học sinh xem lại ngay sau buổi)') ?></option><option value="test"><?= te('Bài kiểm tra (xem lại sau khi GV công bố)') ?></option></select>
     </label>
     <label class="check"><input type="checkbox" name="allow_change" checked> <?= te('Cho học sinh đổi đáp án khi câu còn mở') ?></label>
-    <?= conn_mode_picker($c['conn_mode']) ?>
+    <p class="small muted" style="margin:0">🔵 <?= te('Remote nRF52840 gửi qua gateway nRF52840 cắm USB (máy chủ hoặc máy giáo viên).') ?></p>
     <button class="primary"><?= te('Bắt đầu') ?></button>
   </form>
   <?php endif; ?>
@@ -186,10 +180,6 @@ page_head($c['name'], 'classes.php');
     <label><?= te('Môn học') ?> <input name="subject" maxlength="60" value="<?= h($c['subject'] ?? '') ?>" placeholder="<?= te('Toán') ?>"></label>
     <label><?= te('Lớp hành chính') ?> <input name="cohort" maxlength="30" value="<?= h($c['cohort'] ?? '') ?>" placeholder="10A1"> <span class="muted small"><?= te('GV chủ nhiệm của lớp này (do Admin trường gán) xem được báo cáo môn của bạn.') ?></span></label>
     <button><?= te('Lưu') ?></button>
-  </form>
-  <form method="post" class="stack" style="margin-top:14px"><?= csrf_field() ?><input type="hidden" name="action" value="conn_mode">
-    <?= conn_mode_picker($c['conn_mode']) ?>
-    <div><button><?= te('Lưu kiểu kết nối') ?></button></div>
   </form>
 </section>
 </div>

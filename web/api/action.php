@@ -32,10 +32,6 @@ function close_q(int $sid, int $qid): void {
 if ($ses['status'] !== 'running' && $act !== 'show_result') reply(false, t('Buổi học đã kết thúc.'));
 
 switch ($act) {
-    case 'conn_mode':                  // đổi kiểu kết nối clicker của lớp (Bluetooth / Wi-Fi)
-        $m = ($_POST['mode'] ?? '') === 'wifi' ? 'wifi' : 'ble';
-        q('UPDATE classes SET conn_mode=? WHERE id=?', [$m, $ses['class_id']]);
-        break;
     case 'open':                       // mở (hoặc mở lại) một câu và chiếu nó
         open_q($ses, question_of($ses, $qid));
         break;

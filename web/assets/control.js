@@ -44,11 +44,6 @@
     act(b.dataset.act, extra);
   });
   $('allow_change').addEventListener('change', (e) => act('allow_change', { on: e.target.checked ? 1 : 0 }));
-  document.querySelectorAll('#conn-seg button').forEach((b) => b.addEventListener('click', () => {
-    if (!st || st.session.conn_mode === b.dataset.mode) return;
-    const name = b.dataset.mode === 'wifi' ? 'Wi-Fi' : 'Bluetooth';
-    if (confirm(T('Chuyển lớp sang kết nối {m}? Server sẽ chỉ nhận gói từ clicker {m}.', { m: name }))) act('conn_mode', { mode: b.dataset.mode });
-  }));
 
   function bars(dist, correct) {
     const keys = Object.keys(dist || {});
@@ -63,13 +58,9 @@
     const ended = s.session.status !== 'running';
     $('st-status').textContent = ended ? T('đã kết thúc') : T('đang học');
     $('st-status').className = 'tag ' + (ended ? '' : 'live');
-    const gw = $('gw'), wifi = s.session.conn_mode === 'wifi';
-    document.querySelectorAll('#conn-seg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === s.session.conn_mode));
-    $('gw-usb').hidden = wifi || ended;
-    if (wifi) {
-      gw.textContent = s.wifi.online ? T('Wi-Fi: {n} clicker đang gửi', { n: s.wifi.online }) : T('Wi-Fi: chưa có clicker nào');
-      gw.className = 'gw ' + (s.wifi.online ? 'on' : 'off');
-    } else {
+    const gw = $('gw');                             // gateway nRF52840 (cắm máy chủ hoặc máy giáo viên qua trình duyệt)
+    $('gw-usb').hidden = ended;
+    {
       const where = s.gateway.port === 'webserial' ? T(' (USB máy GV)') : '';
       gw.textContent = s.gateway.online ? T('Gateway{w}: đang nhận ({n} gói/s)', { w: where, n: s.gateway.pkt_per_s ?? 0 }) : T('Gateway: chưa kết nối');
       gw.className = 'gw ' + (s.gateway.online ? 'on' : 'off');

@@ -35,8 +35,6 @@ $gw = q1('SELECT online, pkt_per_s, port, TIMESTAMPDIFF(SECOND, updated_at, NOW(
 $out['gateway'] = $gw ? ['online' => (bool)$gw['online'] && (int)$gw['age'] < 15, 'pkt_per_s' => (float)$gw['pkt_per_s'], 'age_s' => (int)$gw['age'],
                          'port' => $gw['port'] ?? null]
                       : ['online' => false, 'pkt_per_s' => null, 'age_s' => null, 'port' => null];
-$out['session']['conn_mode'] = $ses['conn_mode'];
-$out['wifi'] = ['online' => (int)qv('SELECT COUNT(*) FROM devices WHERE last_room=? AND last_via="wifi" AND last_seen > NOW() - INTERVAL 30 SECOND', [$ses['room_id']])];
 
 $cur = null;
 foreach ($qs as $q) if ((int)$q['id'] === (int)$ses['current_q']) $cur = $q;

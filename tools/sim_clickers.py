@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sim_clickers.py — giả lập gateway + N clicker ở tầng MQTT (không cần phần cứng).
+"""sim_clickers.py — giả lập gateway nRF52840 + N Remote nRF52840 ở tầng MQTT (không cần phần cứng).
 
 Mỗi clicker ảo làm đúng như firmware thật:
   - điểm danh: gửi LOGIN (5 lần, cùng seq) tới khi thấy bit của mình trong ATTEND;
@@ -12,7 +12,6 @@ Ví dụ:
   python3 tools/sim_clickers.py --room 1 -n 40
   python3 tools/sim_clickers.py --room 1 -n 200 --loss 0.3 --think 1 8       (thử tải)
   python3 tools/sim_clickers.py --room 1 -n 5 --bad                          (thêm vài gói sai để xem bảng "bị loại")
-  python3 tools/sim_clickers.py --room 2 -n 20 --via wifi                     (clicker Wi-Fi: gửi thẳng MQTT, đọc ars/<room>/state)
 """
 import argparse
 import json
@@ -43,23 +42,10 @@ class Sim:
         self.cli = arscfg.mqtt_client(f'ars-sim-{a.room}-{random.randint(0, 9999)}')
         self.cli.on_message = self.on_msg
         self.cli.connect(cp['mqtt']['host'], int(cp['mqtt'].get('port', 1883)))
-        if a.via == 'wifi':                               # clicker Wi-Fi đọc bản trạng thái JSON
-            self.cli.subscribe(f'ars/{a.room}/state', qos=1)
-        else:                                             # qua gateway: đọc lệnh STATE/ATTEND
-            self.cli.subscribe(f'ars/{a.room}/cmd/gw', qos=1)
+        self.cli.subscribe(f'ars/{a.room}/cmd/gw', qos=1)  # như gateway: đọc lệnh STATE/ATTEND phát vào beacon
         self.cli.loop_start()
 
     def on_msg(self, c, u, msg):
-        if msg.topic.endswith('/state'):
-            try:
-                j = json.loads(msg.payload)
-            except ValueError:
-                return
-            with self.cv:
-                self.state.update(qid=int(j.get('qid') or 0), open=int(j.get('open') or 0),
-                                  answered=set(j.get('answered') or []), attend=set(j.get('attend') or []))
-                self.cv.notify_all()
-            return
         p = msg.payload.decode().split()
         with self.cv:
             if p[0] == 'STATE':
@@ -69,10 +55,10 @@ class Sim:
             self.cv.notify_all()
 
     def burst(self, mac, ptype, seat, q, seq, ans):
-        for _ in range(1 if self.a.via == 'wifi' else 5):  # BLE: 5 sự kiện quảng bá; Wi-Fi: 1 gói QoS 1
-            if self.a.via == 'wifi' or random.random() >= self.a.loss:   # BLE: gói có thể bị va chạm/mất
+        for _ in range(5):                                # 5 sự kiện quảng bá BLE mỗi lần bấm
+            if random.random() >= self.a.loss:            # gói có thể bị va chạm/mất
                 pkt = {'mac': mac, 'room': self.room, 'type': ptype, 'id': seat, 'q': q, 'seq': seq,
-                       'ans': ans, 'batt': random.randint(2700, 3300), 'rssi': random.randint(-85, -45), 'via': self.a.via}
+                       'ans': ans, 'batt': random.randint(2700, 3300), 'rssi': random.randint(-85, -45), 'via': 'ble'}
                 self.cli.publish(f'ars/{self.room}/resp', json.dumps(pkt), qos=1)
             time.sleep(random.uniform(0.02, 0.03))
 
@@ -170,6 +156,5 @@ if __name__ == '__main__':
     ap.add_argument('--think', type=float, nargs=2, default=[1, 6], help='thời gian suy nghĩ (giây) min max')
     ap.add_argument('--duration', type=float, default=120, help='chạy bao lâu (giây)')
     ap.add_argument('--bad', action='store_true', help='gửi thêm vài gói sai')
-    ap.add_argument('--via', choices=['ble', 'wifi'], default='ble', help='giả lập clicker Bluetooth (qua gateway) hay Wi-Fi')
     a = ap.parse_args()
     Sim(a, arscfg.load(a.config)).run()

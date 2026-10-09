@@ -144,8 +144,8 @@ class Ingest:
             self.reject(room, None, pkt, 'no_session', raw)
             return
         sid = ses['id']
-        # 4. lớp chọn Bluetooth thì chỉ nhận gói qua gateway, chọn Wi-Fi thì chỉ nhận gói clicker Wi-Fi
-        if via != (ses.get('conn_mode') or 'ble'):
+        # 4. phần cứng chỉ dùng Remote nRF52840: chỉ nhận gói đi qua gateway Bluetooth (gói ghi "via":"wifi" bị loại)
+        if via != 'ble':
             self.reject(room, sid, pkt, 'wrong_link', raw)
             return
 
@@ -232,7 +232,7 @@ class Ingest:
               'open_positions': [], 'acks': self.acks.get(room, []), 'ts': time.time()}
         if not ses:
             return st
-        st['mode'] = ses.get('conn_mode') or 'ble'
+        st['mode'] = 'ble'
         sid = ses['id']
         st['session_id'] = sid
         st['attend'] = [r['seat_no'] for r in self.s('SELECT seat_no FROM session_logins WHERE session_id=%s', (sid,))]

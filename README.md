@@ -1,6 +1,6 @@
 # ARS server — Hệ thống phản hồi lớp học bằng Remote
 
-Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Remote nRF52840** (Bluetooth) hoặc **ESP32** (Wi-Fi); server nhận đáp án, kiểm tra hợp lệ, lưu vào MariaDB và hiển thị trên web giáo viên, màn chiếu, cổng học sinh và phụ huynh.
+Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Remote nRF52840** (Bluetooth Low Energy), **gateway nRF52840** cắm USB vào laptop thu sóng; server nhận đáp án, kiểm tra hợp lệ, lưu vào MariaDB và hiển thị trên web giáo viên, màn chiếu, cổng học sinh và phụ huynh.
 
 > Nguyên tắc thiết kế: **Remote và gateway chỉ truyền/nhận, không quyết định gì.** Mọi kiểm tra hợp lệ, lưu trữ, thống kê đều nằm ở server (`ingest/ingest.py`). Firmware có thể đơn giản, sửa luật chỉ cần sửa server.
 
@@ -12,23 +12,25 @@ Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi
 
 ```
                               LAPTOP GIÁO VIÊN (server, chạy được offline)
- ┌──────────┐  BLE adv   ┌─────────┐ USB serial ┌───────────┐  MQTT   ┌──────────────┐  SQL  ┌─────────┐
- │ Remote   │──────────▶│ Gateway │──────────▶│ bridge.py │───────▶│  ingest.py   │──────▶│ MariaDB │
- │ nRF52840 │◀──────────│ nRF USB │◀──────────│ (hoặc     │◀───────│ kiểm tra gói │◀──────│  `ars`  │
- └──────────┘  beacon    └─────────┘ JSON/lệnh  │ gateway.js│ STATE   │ soạn STATE   │       └────▲────┘
-                                               └───────────┘         └──────────────┘            │ đọc/ghi
- ┌──────────┐            Wi-Fi, MQTT 1884 / wss /mqtt  ──────────────▶ (cùng topic)           ┌────┴─────┐
- │ Remote   │◀────────────────────────────────────────── ars/<room>/state                      │ Web PHP  │ ◀── trình duyệt GV,
- │ ESP32    │                                                                                   │ (Apache) │     màn chiếu, HS, PH
- └──────────┘                                                                                   └──────────┘
+ ┌──────────┐  BLE adv   ┌──────────┐ USB serial ┌───────────┐  MQTT   ┌──────────────┐  SQL  ┌─────────┐
+ │ Remote   │──────────▶│ Gateway  │──────────▶│ bridge.py │───────▶│  ingest.py   │──────▶│ MariaDB │
+ │ nRF52840 │◀──────────│ nRF52840 │◀──────────│ (hoặc     │◀───────│ kiểm tra gói │◀──────│  `ars`  │
+ └──────────┘  beacon    │ cắm USB  │ JSON/lệnh  │ gateway.js│ STATE   │ soạn STATE   │       └────▲────┘
+  (mỗi học sinh 1 cái)   └──────────┘            └───────────┘         └──────────────┘            │ đọc/ghi
+                                                                                              ┌────┴─────┐
+                                                                                              │ Web PHP  │ ◀── trình duyệt GV,
+                                                                                              │ (Apache) │     màn chiếu, HS, PH
+                                                                                              └──────────┘
 ```
+
+Toàn bộ phần cứng là **nRF52840**: mỗi học sinh một Remote, cả phòng một gateway cắm USB vào laptop (hoặc vào máy giáo viên khác, nối qua trình duyệt — `gateway.js`).
 
 | Thành phần | Vai trò |
 |---|---|
-| **Remote (client)** | Học sinh nhập số ghế (ID), chọn chữ A–J, bấm OK. Phát gói LOGIN / ANSWER; đọc beacon để bật đèn xanh khi server đã nhận. |
-| **Gateway** | Thiết bị nRF cắm USB: nghe mọi gói BLE trong phòng → in **1 dòng JSON/gói** ra cổng serial; nhận lệnh từ server (STATE, ATTEND…) → phát lại trong **beacon**. Không lọc, không loại trùng. |
+| **Remote nRF52840** | Học sinh nhập số ghế (ID), chọn chữ A–J, bấm OK. Phát gói LOGIN / ANSWER; đọc beacon để bật đèn xanh khi server đã nhận. |
+| **Gateway nRF52840** | Thiết bị nRF52840 cắm USB: nghe mọi gói BLE trong phòng → in **1 dòng JSON/gói** ra cổng serial; nhận lệnh từ server (STATE, ATTEND…) → phát lại trong **beacon**. Không lọc, không loại trùng. |
 | **bridge.py** / **gateway.js** | Cầu nối serial ⇄ MQTT, không có logic. `bridge.py` chạy như dịch vụ khi gateway cắm vào server; `web/gateway.php` + `assets/gateway.js` làm cùng việc qua trình duyệt (Web Serial) khi gateway cắm vào máy GV khác. |
-| **Mosquitto** | MQTT broker: 1883 (chỉ trong máy), 1884 (LAN, có mật khẩu, cho ESP32), 9001 WebSocket (qua Apache `/mqtt`). |
+| **Mosquitto** | MQTT broker: 1883 (chỉ trong máy), 9001 WebSocket có mật khẩu (qua Apache `/mqtt`, cho gateway cắm vào máy giáo viên). Không mở cổng MQTT ra mạng LAN. |
 | **ingest.py** | "Trái tim": kiểm tra gói, ghi CSDL, soạn trạng thái gửi ngược cho Remote, tự đóng câu hết giờ. |
 | **MariaDB** | Lưu toàn bộ dữ liệu (lớp, câu hỏi, buổi học, đáp án, LMS…). |
 | **Web PHP** | Giáo viên điều khiển buổi học, màn chiếu, báo cáo; cổng học sinh / phụ huynh. **Web không nói MQTT**: chỉ ghi DB và tăng `sessions.state_rev`. |
@@ -40,7 +42,7 @@ Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi
 ```
 ars-server/
 ├── README.md                     Tài liệu này
-├── HUONG_DAN_CAI_DAT.md          Hướng dẫn cài đặt & vận hành chi tiết (Ubuntu, Windows, link cố định, Wi-Fi/BLE)
+├── HUONG_DAN_CAI_DAT.md          Hướng dẫn cài đặt & vận hành chi tiết (Ubuntu, Windows, link cố định, gateway nRF52840)
 ├── UPGRADE_V10/V11/V12.md        Ghi chú nâng cấp từng phiên bản (migration, tính năng mới, giới hạn)
 ├── CHANGES_V10.md                Danh sách file thay đổi ở v10
 ├── config.ini.example            Mẫu cấu hình: DB, MQTT, cổng serial gateway, room, uploads (chép thành config.ini)
@@ -62,13 +64,15 @@ ars-server/
 │   │                             session_questions, session_logins, responses, rejected, gateways, VIEW final_answers
 │   ├── migrate_002_hocsinh.sql   Cổng học sinh: tài khoản HS, bài ôn tập, lượt luyện tập, sổ câu sai
 │   ├── migrate_003_*.sql         Buổi học/bài giảng, cài đặt, nhật ký AI, mã tham gia lớp, trợ lý học tập
-│   ├── migrate_004_*.sql         Nhiều giáo viên (quản trị, khoá), kiểu kết nối BLE/Wi-Fi
+│   ├── migrate_004_*.sql         Nhiều giáo viên (quản trị, khoá), kiểu kết nối lớp
 │   ├── migrate_005_lms.sql       Trường, kho đề, media câu hỏi, ghép Remote ↔ học sinh, bài tập về nhà, phụ huynh
 │   ├── migrate_006_*.sql         Admin trường/lớp hành chính, đồng bộ Cloud, thi đua đổi quà, thông báo Zalo/SMS
 │   ├── migrate_007_oauth.sql     Đăng nhập Google / Facebook
 │   ├── migrate_008_*.sql         Học sinh tự đăng ký chưa cần lớp
 │   ├── migrate_009_language.sql  Ngôn ngữ giao diện theo tài khoản (vi / en)
-│   └── migrate_010_tutor_chats.sql  Trợ lý AI: nhiều cuộc trò chuyện, đánh giá 👍/👎
+│   ├── migrate_010_tutor_chats.sql  Trợ lý AI: nhiều cuộc trò chuyện, đánh giá 👍/👎
+│   ├── migrate_011_set_finalize.sql Bộ câu hỏi: trạng thái Đang soạn / Đã hoàn tất
+│   └── migrate_012_nrf_only.sql     Chỉ dùng phần cứng nRF52840 (mọi lớp kết nối Bluetooth)
 │
 ├── deploy/                       Cài đặt & vận hành trên Ubuntu
 │   ├── install_ubuntu.sh         Cài một lệnh: Apache+PHP, MariaDB, Mosquitto, Python libs, chép code vào /opt/ars-server
@@ -78,7 +82,7 @@ ars-server/
 │   ├── ars-bridge.service        systemd: chạy bridge.py (nhóm dialout để mở cổng serial)
 │   ├── ars-mdns.service/.sh      Quảng bá tên ars.local trong LAN
 │   ├── apache-ars.conf           Alias /ars → web/, link ngắn /gv /hs, chặn lib/, proxy WebSocket /mqtt
-│   └── mosquitto-ars.conf        3 listener MQTT (1883 nội bộ, 1884 LAN có mật khẩu, 9001 WebSocket)
+│   └── mosquitto-ars.conf        2 listener MQTT (1883 nội bộ, 9001 WebSocket có mật khẩu)
 │
 ├── web/                          Ứng dụng web PHP (document root /ars)
 │   ├── index.php · register.php · forgot.php · logout.php     Đăng nhập / tạo tài khoản / quên mật khẩu giáo viên
@@ -102,7 +106,7 @@ ars-server/
 │   ├── rewards.php               Thi đua: bảng xếp hạng, cửa hàng quà, duyệt quà
 │   ├── school.php · schools.php · teachers.php   Admin trường; quản trị trường; quản trị giáo viên
 │   ├── sync.php · notify.php     Đồng bộ lên Cloud; cấu hình & nhật ký Zalo/SMS
-│   ├── settings.php · practice_log.php           Cài đặt (AI, đường dẫn, Wi-Fi, Google/Facebook); lịch sử luyện tập HS
+│   ├── settings.php · practice_log.php           Cài đặt (AI, đường dẫn, kết nối gateway, Google/Facebook); lịch sử luyện tập HS
 │   ├── api/
 │   │   ├── state.php             JSON trạng thái buổi học (bảng điều khiển & màn chiếu gọi mỗi giây)
 │   │   ├── action.php            Lệnh điều khiển: mở/đóng/chiếu câu, hiện kết quả, giải phóng ghế, kết thúc → tăng state_rev
@@ -165,7 +169,7 @@ sequenceDiagram
    |---|---|---|
    | 1 | Đủ trường, kiểu đúng, MAC 17 ký tự, type 1/2, room 0–255 | `malformed` |
    | 2 | Room có buổi đang chạy | `no_session` |
-   | 3 | Kênh gửi khớp kiểu kết nối của lớp (BLE / Wi-Fi) | `wrong_link` |
+   | 3 | Gói phải đi qua gateway Bluetooth (`via` = `ble`) | `wrong_link` |
    | 4 | Nếu ghế/MAC đã ghép cố định (mapping.php) thì phải khớp | `mapping_mismatch` |
    | 5 | MAC đã điểm danh, và đúng ghế đã điểm danh | `not_logged_in` · `id_mismatch` |
    | 6 | Câu `q` đã được mở trong buổi | `q_not_open` |
@@ -183,7 +187,7 @@ sequenceDiagram
 ### 3.4 Lưu trữ
 | Bảng | Nội dung |
 |---|---|
-| `devices` | Mỗi MAC: pin (mV), RSSI, room/ghế gần nhất, lần cuối thấy, tổng gói, gói trùng, kênh (ble/wifi) |
+| `devices` | Mỗi MAC: pin (mV), RSSI, room/ghế gần nhất, lần cuối thấy, tổng gói, gói trùng |
 | `session_logins` | Điểm danh: (buổi, ghế, MAC, thời điểm) — duy nhất theo ghế và theo MAC |
 | `responses` | **Mọi lượt bấm hợp lệ** (kể cả đổi đáp án): ghế, MAC, seq, chữ, RSSI, thời điểm ms |
 | `final_answers` (VIEW) | Đáp án cuối của mỗi ghế cho mỗi câu = lượt có `id` lớn nhất — dùng cho chấm điểm, thống kê |
@@ -233,20 +237,20 @@ Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/m
 **Bitmap:** ghế n ở byte `n ÷ 8`, bit `n mod 8`, bit thấp trước, 13 byte = 104 bit (`common/arscfg.py → bitmap_hex`). Ví dụ ghế 1–4 → `1E000000000000000000000000`.
 Server phát lại toàn bộ trạng thái khi có thay đổi (≤ 0,3 s) **và định kỳ mỗi 5 s** (`[ingest] state_refresh_s`), nên gateway khởi động lại hay mất một lệnh vẫn tự đúng.
 
-### 4.3 MQTT (bên trong server, và Remote Wi-Fi)
+### 4.3 MQTT (bên trong server)
 | Topic | Chiều | QoS | Nội dung |
 |---|---|---|---|
-| `ars/<room>/resp` | gateway/ESP32 → ingest | 1 | JSON gói như 4.2, thêm `via` (`ble`/`wifi`), `ts` |
+| `ars/<room>/resp` | bridge/gateway.js → ingest | 1 | JSON gói như 4.2, thêm `via` (`ble`), `ts` |
 | `ars/<room>/cmd/gw` | ingest → bridge/gateway.js | 1 | Một lệnh STATE / ATTEND / OPENMASK / ACKS |
-| `ars/<room>/state` | ingest → mọi bên | 1, **retain** | JSON trạng thái đầy đủ (`qid, open, answered[], attend[], open_positions[], acks, mode, cmds[]`). Bridge vừa nối USB đọc bản giữ lại để phát ngay; Remote Wi-Fi đọc trực tiếp |
+| `ars/<room>/state` | ingest → mọi bên | 1, **retain** | JSON trạng thái đầy đủ (`qid, open, answered[], attend[], open_positions[], acks, mode, cmds[]`). Bridge vừa nối USB đọc bản giữ lại để phát ngay |
 | `ars/<room>/live` | ingest → (tuỳ chọn) | 0 | Số đã trả lời, phân bố đáp án |
 | `ars/<room>/gw/status` | bridge/gateway.js → ingest | 1, retain | `{"online", "port", "pkt_per_s"}` mỗi 5 s; Last Will = offline |
 
-Remote **Wi-Fi (ESP32)** bỏ qua gateway: kết nối `mqtt://ars.local:1884` (LAN) hoặc `wss://<link-công-khai>/mqtt`, tài khoản `clicker` (mật khẩu ở `config.ini [mqtt_public]`), gửi `ars/<room>/resp` với `"via":"wifi"`, đọc `ars/<room>/state`.
+Phần cứng chỉ dùng **nRF52840** nên mọi gói đều đi qua gateway (`bridge.py` hoặc `gateway.js`); MQTT chỉ mở trong máy (1883) và qua WebSocket `/mqtt` có mật khẩu cho gateway cắm vào máy giáo viên.
 
 ### 4.4 Lưu ý khi sử dụng
 - **Room phải khớp**: lớp đang học ↔ `[gateway] room` ↔ room Remote nhớ. Sai room → gói bị loại `no_session`. Đổi room: học sinh nhập lại ID trên Remote.
-- **Chọn đúng kiểu kết nối** của lớp (🔵 Bluetooth / 📶 Wi-Fi trên bảng điều khiển); gói khác kiểu bị loại `wrong_link`.
+- **Chỉ nhận gói qua gateway Bluetooth**: gói có `"via"` khác `ble` bị loại `wrong_link`.
 - **Một ID một máy** trong một buổi. Học sinh đổi Remote giữa giờ → GV bấm ô ghế để **giải phóng ID**, rồi học sinh điểm danh lại.
 - **Ghép Remote cố định** (Thiết bị → Ghép Remote) chống mượn máy bấm hộ; đổi ghép ngoài giờ học.
 - Tỉ lệ **gói trùng 70–80 % là bình thường** (mỗi lần bấm phát 5 lần). Nhiều gói `late`/`q_closed` = học sinh bấm sau khi đóng câu.
@@ -279,7 +283,7 @@ Có migration mới (`db/migrate_00X_*.sql`) thì chạy trước: `mysql -u roo
 
 **Không có phần cứng:**
 ```bash
-ars sim 30            # hoặc: python3 tools/sim_clickers.py --room 1 -n 30 [--loss 0.3] [--via wifi]
+ars sim 30            # hoặc: python3 tools/sim_clickers.py --room 1 -n 30 [--loss 0.3]
 ```
 Mở bảng điều khiển, bấm **Mở câu** — các ô chuyển xanh dần; cuối chạy bộ giả lập in tỉ lệ xác nhận và độ trễ bấm OK → đèn xanh.
 

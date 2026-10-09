@@ -6,7 +6,7 @@ require __DIR__ . '/lib/oauth.php';
 $t = require_login();
 $act = $_POST['action'] ?? '';
 $admin = is_admin();
-if (in_array($act, ['ai', 'tutor', 'general', 'links', 'wifi', 'oauth'], true) && !$admin) { flash('Chỉ quản trị viên được đổi mục này.', 'err'); redirect('settings.php'); }
+if (in_array($act, ['ai', 'tutor', 'general', 'links', 'oauth'], true) && !$admin) { flash('Chỉ quản trị viên được đổi mục này.', 'err'); redirect('settings.php'); }
 if ($act === 'links') {
     $u = trim($_POST['public_url'] ?? '');
     if ($u !== '' && !preg_match('#^https?://[a-z0-9.-]+(:\d+)?#i', $u, $m)) { flash('Link công khai phải dạng https://ten-may.tailxxxx.ts.net', 'err'); redirect('settings.php#links'); }
@@ -15,12 +15,6 @@ if ($act === 'links') {
     setting_set('lan_name', preg_match('/^[a-z0-9-]+\.local$/', $n) ? $n : null);
     flash('Đã lưu đường dẫn.'); redirect('settings.php#links');
 }
-if ($act === 'wifi') {
-    setting_set('wifi_ssid', mb_substr(trim($_POST['wifi_ssid'] ?? ''), 0, 32) ?: null);
-    setting_set('wifi_pass', mb_substr((string)($_POST['wifi_pass'] ?? ''), 0, 63) ?: null);
-    flash('Đã lưu thông tin Wi-Fi cho clicker.'); redirect('settings.php#conn');
-}
-
 if ($act === 'ai') {
     $p = $_POST['provider'] ?? 'offline';
     if (!isset(AI_PROVIDERS[$p])) $p = 'offline';
@@ -97,7 +91,7 @@ page_head('Cài đặt', 'settings.php');
 ?>
 <div class="page-head"><div><h1>⚙️ Cài đặt</h1><p class="muted">Đường dẫn truy cập, kết nối clicker, trợ lý AI, tài khoản.<?= $admin ? '' : ' Một số mục do giáo viên quản trị server cài đặt.' ?></p></div></div>
 <div class="settings-grid">
-  <nav class="settings-nav"><a href="#links">🔗 Đường dẫn</a><a href="#conn">📶 Kết nối clicker</a><?php if ($admin): ?><a href="#ai">✨ Trợ lý AI</a><a href="#tutor">🦉 Trợ lý học sinh</a><?php endif; ?><a href="#account">👤 Tài khoản</a><?php if ($admin): ?><a href="#oauth">🔐 Google / Facebook</a><?php endif; ?><?php if ($admin): ?><a href="#general">🏫 Thông tin chung</a><a href="teachers.php">👥 Giáo viên</a><?php endif; ?><a href="#system">🖥 Hệ thống</a></nav>
+  <nav class="settings-nav"><a href="#links">🔗 Đường dẫn</a><a href="#conn">🔵 Kết nối clicker</a><?php if ($admin): ?><a href="#ai">✨ Trợ lý AI</a><a href="#tutor">🦉 Trợ lý học sinh</a><?php endif; ?><a href="#account">👤 Tài khoản</a><?php if ($admin): ?><a href="#oauth">🔐 Google / Facebook</a><?php endif; ?><?php if ($admin): ?><a href="#general">🏫 Thông tin chung</a><a href="teachers.php">👥 Giáo viên</a><?php endif; ?><a href="#system">🖥 Hệ thống</a></nav>
   <div>
     <?php require __DIR__ . '/lib/settings_links.php'; ?>
     <?php if ($admin): ?>

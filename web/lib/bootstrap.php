@@ -13,7 +13,7 @@ const REJECT_REASONS = [
     'mapping_mismatch' => 'Remote không đúng học sinh đã ghép',
     'wrong_link' => 'Sai kiểu kết nối (lớp đang chọn kiểu khác)',
 ];
-const CONN_MODES = ['ble' => 'Bluetooth', 'wifi' => 'Wi-Fi'];
+const CONN_MODES = ['ble' => 'Bluetooth'];        // phần cứng chỉ dùng nRF52840: Remote BLE → gateway USB
 
 function cfg(): array {
     static $c = null;
@@ -297,19 +297,7 @@ function next_free_room(): int {
     for ($r = 1; $r <= 255; $r++) if (!in_array($r, $used, true)) return $r;
     return 255;
 }
-/** Hai thẻ chọn kiểu kết nối clicker (dùng trong form). */
-function conn_mode_picker(string $cur): string {
-    $o = '<div class="small muted" style="margin-bottom:-4px">' . te('Kết nối clicker') . '</div><div class="modes">';
-    $d = ['ble' => ['🔵', 'Bluetooth', t('Clicker nRF52840 gửi qua gateway USB (cắm máy chủ hoặc máy GV).')],
-          'wifi' => ['📶', 'Wi-Fi', t('Clicker ESP32 gửi thẳng lên máy chủ qua Wi-Fi, không cần gateway.')]];
-    foreach ($d as $k => [$ico, $name, $desc]) {
-        $o .= '<label class="mode"><input type="radio" name="conn_mode" value="' . $k . '"' . ($cur === $k ? ' checked' : '') . '>'
-            . '<b><span class="ico">' . $ico . '</span>' . $name . '</b><span class="small muted">' . $desc . '</span></label>';
-    }
-    return $o . '</div>';
-}
-
-// ---------------------------------------------------------------- MQTT cho clicker Wi-Fi và gateway qua trình duyệt
+// ---------------------------------------------------------------- MQTT cho gateway nRF52840 nối qua trình duyệt (WebSocket /mqtt)
 function mqtt_public(): array {
     $m = cfg()['mqtt_public'] ?? [];
     return ['user' => $m['user'] ?? 'clicker', 'password' => $m['password'] ?? '', 'lan_port' => (int)($m['lan_port'] ?? 1884),
@@ -364,16 +352,16 @@ function ars_logo(): string {
     return '<svg class="ars-logo" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="currentColor"/><path d="M11 29 18.5 10h3L29 29h-3.6l-1.7-4.6h-7.4L14.6 29zm6.5-7.6h5.2L20 15z" fill="#fff"/>'
          . '<path d="M30 9.5a7 7 0 0 1 3 4.5M30.6 5.6a11 11 0 0 1 5 7" fill="none" stroke="#ffb15c" stroke-width="2.2" stroke-linecap="round"/></svg>';
 }
-/** Viên trạng thái buổi học đang chạy: lớp · điểm danh · sóng gateway / Wi-Fi. Bấm để về bảng điều khiển. */
+/** Viên trạng thái buổi học đang chạy: lớp · điểm danh · sóng gateway. Bấm để về bảng điều khiển. */
 function live_pill(int $teacher_id): string {
     try {
-        $r = q1('SELECT s.id, c.name, c.room_id, c.conn_mode, (SELECT COUNT(*) FROM session_logins l WHERE l.session_id=s.id) n_in, '
+        $r = q1('SELECT s.id, c.name, c.room_id, (SELECT COUNT(*) FROM session_logins l WHERE l.session_id=s.id) n_in, '
               . '(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id) n_all, '
               . '(SELECT g.online AND g.updated_at > NOW() - INTERVAL 15 SECOND FROM gateways g WHERE g.room_id=c.room_id) gw '
               . 'FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.teacher_id=? AND s.status="running" ORDER BY s.id DESC LIMIT 1', [$teacher_id]);
     } catch (Throwable $e) { return ''; }
     if (!$r) return '';
-    $ok = $r['conn_mode'] === 'wifi' || (int)$r['gw'] === 1;
+    $ok = (int)$r['gw'] === 1;
     return '<a class="live-pill' . ($ok ? '' : ' weak') . '" href="session.php?id=' . (int)$r['id'] . '" title="' . te('Buổi học đang chạy — mở bảng điều khiển') . '">'
          . '<span class="sig"><i></i><i></i><i></i></span><b>' . h($r['name']) . '</b><span>' . (int)$r['n_in'] . '/' . (int)$r['n_all'] . '</span></a>';
 }

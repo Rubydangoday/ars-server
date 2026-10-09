@@ -35,31 +35,15 @@ $labels = ['public' => ['🌐 Qua Internet (ở đâu cũng vào được, có H
 </section>
 
 <section class="card" id="conn">
-  <h2>📶 Kết nối clicker: Bluetooth hoặc Wi-Fi</h2>
-  <p class="muted small">Mỗi lớp chọn một kiểu ở trang lớp hoặc bảng điều khiển buổi học. Server chỉ nhận gói đúng kiểu lớp đang chọn.</p>
-  <div class="modes" style="pointer-events:none">
-    <div class="mode" style="padding-left:14px"><b><span class="ico">🔵</span>Bluetooth</b>
-      <span class="small">Clicker nRF52840 → Bluetooth → <b>gateway USB</b>. Gateway cắm vào:<br>
-      • <b>máy chủ</b> (dịch vụ ars-bridge, lớp room <?= $srv_room ?: '?' ?>) — <?= $srv_gw && (int)$srv_gw['online'] && (int)$srv_gw['age'] < 15 ? '<span class="tag live">đang nhận</span>' : '<span class="tag off">chưa thấy gateway</span>' ?><br>
-      • hoặc <b>máy của giáo viên</b>: mở bảng điều khiển bằng Chrome/Edge, bấm “Kết nối gateway USB” (cần link https hoặc localhost).</span></div>
-    <div class="mode" style="padding-left:14px"><b><span class="ico">📶</span>Wi-Fi</b>
-      <span class="small">Clicker ESP32 → Wi-Fi → gửi thẳng lên MQTT của máy chủ. Không cần gateway. Clicker cần các thông số dưới đây.</span></div>
+  <h2>🔵 Kết nối clicker (Bluetooth · nRF52840)</h2>
+  <p class="muted small">Mỗi học sinh một Remote nRF52840; Remote phát Bluetooth, <b>gateway nRF52840</b> cắm USB thu cả lớp rồi chuyển về máy chủ. Room trên Remote phải trùng mã lớp (room) đang học.</p>
+  <div class="gw-ways">
+    <div class="mode"><b><span class="ico">🖥</span>Gateway cắm vào máy chủ</b>
+      <span class="small">Dịch vụ <code>ars-bridge</code> đọc cổng USB (cấu hình <code>[gateway] room</code> = <?= $srv_room ?: '?' ?> trong config.ini) —
+      <?= $srv_gw && (int)$srv_gw['online'] && (int)$srv_gw['age'] < 15 ? '<span class="tag live">đang nhận ' . h((string)(float)$srv_gw['pkt_per_s']) . ' gói/s</span>' : '<span class="tag off">chưa thấy gateway</span>' ?></span></div>
+    <div class="mode"><b><span class="ico">💻</span>Gateway cắm vào máy giáo viên</b>
+      <span class="small">Mở bảng điều khiển buổi học bằng Chrome/Edge, bấm <b>“Gateway USB máy này”</b> (cần link https hoặc localhost). Trình duyệt nối về máy chủ qua WebSocket
+      <code><?= h(preg_replace('#^http#', 'ws', $bases['lan_name'])) . h($mp['ws_path']) ?></code><?= $mp['password'] === '' ? ' — <span style="color:var(--bad)">chưa có tài khoản MQTT, chạy lại install_ubuntu.sh</span>' : '' ?>.</span></div>
   </div>
-  <h3 style="margin-top:12px">Thông số cho clicker Wi-Fi</h3>
-  <dl class="kv">
-    <dt>Wi-Fi (SSID)</dt><dd><?= h(setting('wifi_ssid', '— chưa nhập —')) ?></dd>
-    <dt>Mật khẩu Wi-Fi</dt><dd><?= setting('wifi_pass') ? '<span class="secret" data-v="' . h(setting('wifi_pass')) . '">••••••••</span> <a href="#" onclick="const s=this.previousElementSibling;s.textContent=s.dataset.v;this.remove();return false">hiện</a>' : '—' ?></dd>
-    <dt>MQTT trong LAN</dt><dd>mqtt://<?= h($lan_host) ?>:<?= $mp['lan_port'] ?><?= $ip ? '  (hoặc mqtt://' . h($ip) . ':' . $mp['lan_port'] . ')' : '' ?></dd>
-    <dt>MQTT qua WebSocket</dt><dd><?= h(preg_replace('#^http#', 'ws', $bases['lan_name'])) . h($mp['ws_path']) ?><?= !empty($bases['public']) ? '<br>' . h(preg_replace('#^http#', 'ws', $bases['public'])) . h($mp['ws_path']) . '  (Internet)' : '' ?></dd>
-    <dt>Tài khoản MQTT</dt><dd><?= h($mp['user']) ?> / <?= $mp['password'] !== '' ? '<span class="secret" data-v="' . h($mp['password']) . '">••••••••</span> <a href="#" onclick="const s=this.previousElementSibling;s.textContent=s.dataset.v;this.remove();return false">hiện</a>' : '<span style="color:var(--bad)">chưa tạo — chạy lại install_ubuntu.sh</span>' ?></dd>
-    <dt>Gửi đáp án lên</dt><dd>ars/&lt;room&gt;/resp  (JSON như gateway + "via":"wifi", QoS 1)</dd>
-    <dt>Nhận trạng thái</dt><dd>ars/&lt;room&gt;/state  (JSON giữ lại: qid, open, answered, attend, acks)</dd>
-  </dl>
-  <?php if ($admin): ?>
-    <form method="post" class="row" style="margin-top:12px"><?= csrf_field() ?><input type="hidden" name="action" value="wifi">
-      <label>Wi-Fi cho clicker (SSID) <input name="wifi_ssid" value="<?= h(setting('wifi_ssid', '')) ?>" maxlength="32"></label>
-      <label>Mật khẩu Wi-Fi <input name="wifi_pass" type="password" value="<?= h(setting('wifi_pass', '')) ?>" maxlength="63" autocomplete="off"></label>
-      <button class="primary">Lưu</button>
-    </form>
-  <?php endif; ?>
+  <p class="muted small" style="margin:10px 0 0">Kiểm tra pin, sóng và số gói của từng Remote ở <a href="devices.php">Thêm → Thiết bị</a>; ghép Remote cố định với học sinh ở <a href="mapping.php">Ghép Remote</a>.</p>
 </section>

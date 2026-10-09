@@ -18,7 +18,7 @@ sudo bash deploy/install_ubuntu.sh
 
 Script tự cài Apache + PHP, MariaDB, Mosquitto, Avahi, Python, php-curl, poppler-utils; chép mã vào `/opt/ars-server`;
 tạo/cập nhật CSDL; tạo thư mục lưu bài giảng `/var/lib/ars/uploads`; bật dịch vụ `ars-ingest`, `ars-bridge`, `ars-mdns`;
-mở MQTT cho clicker Wi-Fi (cổng 1884 và WebSocket `/mqtt`, có mật khẩu).
+bật MQTT trong máy và WebSocket `/mqtt` (có mật khẩu) cho gateway cắm vào máy giáo viên.
 Chạy lại nhiều lần không mất dữ liệu, không đổi mật khẩu CSDL.
 
 Nếu bước 1/7 báo lỗi kho Spotify (`NO_PUBKEY … repository.spotify.com`):
@@ -58,20 +58,15 @@ Tên máy trong link đổi được ở trang quản trị Tailscale (Machines 
 - Trợ lý AI, trợ lý học sinh, tên trường do quản trị viên cài; giáo viên khác chỉ sửa tài khoản của mình.
 - **Mã lớp (room) không trùng giữa các giáo viên** (web tự gợi ý số trống) để clicker không gửi nhầm lớp.
 
-## 1d. Kết nối clicker: Bluetooth hoặc Wi-Fi
+## 1d. Kết nối Remote: Bluetooth qua gateway nRF52840
 
-Chọn cho từng lớp ở **trang lớp** (hoặc khi bấm **Bắt đầu**), đổi nhanh trên **bảng điều khiển** (nút 🔵 Bluetooth / 📶 Wi-Fi).
-Server chỉ nhận gói đúng kiểu lớp đang chọn; gói sai kiểu hiện ở bảng “Gói bị từ chối” với lý do *Sai kiểu kết nối*.
+Phần cứng chỉ gồm **Remote nRF52840** (mỗi học sinh một cái) và **một gateway nRF52840** cắm USB. Remote phát Bluetooth, gateway thu cả phòng rồi chuyển về máy chủ. Hai cách cắm gateway:
+1. Cắm **máy chủ** → dịch vụ `ars-bridge` (room trong `config.ini`, mục `[gateway]`).
+2. Cắm **máy của giáo viên** (phòng khác, không cài gì): bảng điều khiển → **🔌 Gateway USB máy này** → **Kết nối gateway** → chọn cổng.
+   Cần Chrome/Edge và trang mở bằng link **https** (link Internet) hoặc `localhost`. Giữ tab mở trong buổi học.
 
-- **🔵 Bluetooth** (clicker nRF52840): cần gateway USB. Hai cách cắm:
-  1. Cắm **máy chủ** → dịch vụ `ars-bridge` (room trong `config.ini`, mục `[gateway]`).
-  2. Cắm **máy của giáo viên** (phòng khác, không cài gì): bảng điều khiển → **🔌 Gateway USB máy này** → **Kết nối gateway** → chọn cổng.
-     Cần Chrome/Edge và trang mở bằng link **https** (link Internet) hoặc `localhost`. Giữ tab mở trong buổi học.
-- **📶 Wi-Fi** (clicker ESP32): clicker gửi thẳng lên MQTT của máy chủ, không cần gateway. Thông số ở **Cài đặt → Kết nối clicker**:
-  - Trong LAN: `mqtt://ars.local:1884`; qua Internet: `wss://<link-công-khai>/mqtt`; tài khoản `clicker` (mật khẩu trong `config.ini`, mục `[mqtt_public]`).
-  - Gửi: `ars/<room>/resp` — JSON như gateway (`mac, room, type, id, q, seq, ans, batt, rssi`) + `"via":"wifi"`, QoS 1.
-  - Nhận: `ars/<room>/state` (giữ lại): `qid, open, answered[], attend[], acks, mode`.
-- Thử không cần phần cứng: `ars sim 30 1 wifi` (30 clicker Wi-Fi, room 1) hoặc `ars sim 30 1 ble`.
+Room trên Remote phải trùng mã lớp (room) đang học. Gói không đi qua gateway Bluetooth bị loại (lý do *Sai kiểu kết nối*).
+Thử không cần phần cứng: `ars sim 30 1` (30 Remote giả lập, room 1).
 
 ## 2. Mỗi lần dùng
 
@@ -97,7 +92,7 @@ Các dịch vụ tự chạy khi bật máy. Chỉ cần:
 | `ars db` | mở MariaDB (gõ SQL, `exit` để thoát) |
 | `ars sql "SELECT * FROM students"` | chạy nhanh một câu SQL |
 | `ars tables` | liệt kê bảng và số dòng |
-| `ars sim 30 1 wifi` | 30 clicker giả lập (room 1, Wi-Fi; bỏ `wifi` = Bluetooth) |
+| `ars sim 30 1` | 30 Remote nRF52840 giả lập (room 1), gửi qua gateway giả lập |
 | `ars backup` | sao lưu CSDL ra file .sql |
 | `sudo systemctl restart ars-ingest ars-bridge` | khởi động lại |
 

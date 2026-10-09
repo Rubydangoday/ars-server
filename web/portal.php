@@ -153,15 +153,15 @@ page_head(t('ARS — Lớp học tương tác bằng Remote'), '', true);
 <!-- ============ REMOTE (phần cứng) -->
 <section class="lp-sec lp-dark" id="remote">
   <div class="lp-head reveal"><span class="lp-eyebrow"><?= te('Phần cứng') ?></span><h2><?= te('Remote bền, rẻ, không cần điện thoại') ?></h2>
-    <p><?= te('Mỗi học sinh một Remote nhỏ. Gateway USB cắm vào laptop giáo viên nhận cả lớp cùng lúc — hoặc dùng Remote Wi-Fi gửi thẳng lên máy chủ.') ?></p></div>
+    <p><?= te('Mỗi học sinh một Remote nRF52840 nhỏ gọn. Một gateway nRF52840 cắm USB vào laptop giáo viên nhận cả lớp cùng lúc qua Bluetooth.') ?></p></div>
   <div class="lp-specs">
     <?php foreach ([['🔵', 'Bluetooth (nRF52840)', 'Qua gateway USB, nghe cả phòng, không cần ghép đôi từng máy.'],
-                    ['📶', 'Wi-Fi (ESP32)', 'Gửi thẳng lên máy chủ qua MQTT, không cần gateway.'],
+                    ['🔌', 'Gateway nRF52840', 'Cắm USB vào máy chủ hoặc máy giáo viên (Chrome/Edge), thu sóng cả phòng.'],
                     ['🔁', 'Gửi lại tự động', 'Mỗi lần bấm phát 5 lần, máy chủ loại trùng, đèn xanh khi đã nhận.'],
                     ['🔋', 'Theo dõi pin & sóng', 'Biết Remote nào yếu pin, ở góc nào sóng kém.'],
                     ['👥', '99 học sinh / lớp', 'Tối đa 64 câu mỗi đề, 2–10 phương án A–J.'],
                     ['📴', 'Không cần Internet', 'Máy chủ chạy ngay trên laptop, đồng bộ Cloud khi có mạng.']] as $i => [$ico, $t, $d]): ?>
-      <div class="spec reveal" style="--d:<?= $i * .05 ?>s"><i><?= $ico ?></i><b><?= h($t === 'Bluetooth (nRF52840)' || $t === 'Wi-Fi (ESP32)' ? $t : t($t)) ?></b><span><?= te($d) ?></span></div>
+      <div class="spec reveal" style="--d:<?= $i * .05 ?>s"><i><?= $ico ?></i><b><?= h($t === 'Bluetooth (nRF52840)' || $t === 'Gateway nRF52840' ? $t : t($t)) ?></b><span><?= te($d) ?></span></div>
     <?php endforeach; ?>
   </div>
 </section>
@@ -197,7 +197,7 @@ page_head(t('ARS — Lớp học tương tác bằng Remote'), '', true);
   <div class="lp-head reveal"><span class="lp-eyebrow"><?= te('Hỏi đáp') ?></span><h2><?= te('Câu hỏi thường gặp') ?></h2></div>
   <div class="lp-faq">
     <?php foreach ([['Học sinh có cần điện thoại không?', 'Không. Trên lớp học sinh chỉ dùng Remote. Ở nhà, học sinh và phụ huynh dùng điện thoại hoặc máy tính để làm bài tập, ôn câu sai và xem tiến độ.'],
-                    ['Mất Internet có dạy được không?', 'Được. Máy chủ ARS chạy trên laptop giáo viên, Remote gửi qua gateway USB hoặc Wi-Fi nội bộ. Khi có mạng, bấm “Sync to Cloud” để đẩy kết quả lên.'],
+                    ['Mất Internet có dạy được không?', 'Được. Máy chủ ARS chạy trên laptop giáo viên, Remote gửi qua gateway USB, không cần mạng Wi-Fi. Khi có mạng, bấm “Sync to Cloud” để đẩy kết quả lên.'],
                     ['Học sinh vào lớp thế nào?', 'Mở cổng học sinh, tạo tài khoản bằng mã học sinh (hoặc Google / Facebook) và nhập mã tham gia lớp giáo viên cho.'],
                     ['Dữ liệu học sinh được lưu ở đâu?', 'Trên máy chủ của trường / giáo viên. Xem chi tiết trong Chính sách quyền riêng tư.'],
                     ['Giáo viên nước ngoài dùng được không?', 'Được. Chọn English ở góc trên — giao diện giáo viên và phụ huynh chuyển sang tiếng Anh.']] as [$q, $a]): ?>
