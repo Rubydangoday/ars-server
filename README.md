@@ -1,8 +1,8 @@
 # ARS server — Hệ thống phản hồi lớp học bằng Remote
 
-Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Remote nRF52840** (Bluetooth Low Energy), **gateway nRF52840** cắm USB vào laptop thu sóng; server nhận đáp án, kiểm tra hợp lệ, lưu vào MariaDB và hiển thị trên web giáo viên, màn chiếu, cổng học sinh và phụ huynh.
+Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Remote nRF52840** (Bluetooth Low Energy), **Bluetooth sẵn có của laptop** thu sóng trực tiếp (không cần gateway); server nhận đáp án, kiểm tra hợp lệ, lưu vào MariaDB và hiển thị trên web giáo viên, màn chiếu, cổng học sinh và phụ huynh.
 
-> Nguyên tắc thiết kế: **Remote và gateway chỉ truyền/nhận, không quyết định gì.** Mọi kiểm tra hợp lệ, lưu trữ, thống kê đều nằm ở server (`ingest/ingest.py`). Firmware có thể đơn giản, sửa luật chỉ cần sửa server.
+> Nguyên tắc thiết kế: **Remote và bộ thu Bluetooth chỉ truyền/nhận, không quyết định gì.** Mọi kiểm tra hợp lệ, lưu trữ, thống kê đều nằm ở server (`ingest/ingest.py`). Firmware có thể đơn giản, sửa luật chỉ cần sửa server.
 
 Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi tiết) · [UPGRADE_V10.md](UPGRADE_V10.md) (LMS, phụ huynh) · [UPGRADE_V11.md](UPGRADE_V11.md) (trường, Cloud, thi đua, Zalo/SMS) · [UPGRADE_V12.md](UPGRADE_V12.md) (Google/Facebook, học sinh tự đăng ký) · [tests/README.md](tests/README.md)
 
@@ -11,26 +11,26 @@ Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi
 ## 1. Kiến trúc tổng quan
 
 ```
-                              LAPTOP GIÁO VIÊN (server, chạy được offline)
- ┌──────────┐  BLE adv   ┌──────────┐ USB serial ┌───────────┐  MQTT   ┌──────────────┐  SQL  ┌─────────┐
- │ Remote   │──────────▶│ Gateway  │──────────▶│ bridge.py │───────▶│  ingest.py   │──────▶│ MariaDB │
- │ nRF52840 │◀──────────│ nRF52840 │◀──────────│ (hoặc     │◀───────│ kiểm tra gói │◀──────│  `ars`  │
- └──────────┘  beacon    │ cắm USB  │ JSON/lệnh  │ gateway.js│ STATE   │ soạn STATE   │       └────▲────┘
-  (mỗi học sinh 1 cái)   └──────────┘            └───────────┘         └──────────────┘            │ đọc/ghi
-                                                                                              ┌────┴─────┐
-                                                                                              │ Web PHP  │ ◀── trình duyệt GV,
-                                                                                              │ (Apache) │     màn chiếu, HS, PH
-                                                                                              └──────────┘
+                         LAPTOP GIÁO VIÊN (server, chạy được offline)
+ ┌──────────┐  BLE quảng bá  ┌──────────────────┐  MQTT   ┌──────────────┐  SQL  ┌─────────┐
+ │ Remote   │──────────────▶│ Bluetooth laptop │───────▶│  ingest.py   │──────▶│ MariaDB │
+ │ nRF52840 │◀──────────────│  ble_scan.py     │◀───────│ kiểm tra gói │◀──────│  `ars`  │
+ └──────────┘  beacon        │ (dịch vụ ars-ble)│ STATE   │ soạn STATE   │       └────▲────┘
+  (mỗi học sinh 1 cái)       └──────────────────┘         └──────────────┘            │ đọc/ghi
+                                                                                ┌────┴─────┐
+                                                                                │ Web PHP  │ ◀── trình duyệt GV,
+                                                                                │ (Apache) │     màn chiếu, HS, PH
+                                                                                └──────────┘
 ```
 
-Toàn bộ phần cứng là **nRF52840**: mỗi học sinh một Remote, cả phòng một gateway cắm USB vào laptop (hoặc vào máy giáo viên khác, nối qua trình duyệt — `gateway.js`).
+Phần cứng chỉ có **Remote nRF52840** (mỗi học sinh một cái). Laptop chạy server **dùng Bluetooth của chính nó** (BlueZ) để nghe gói Remote phát ra và phát beacon trạng thái ngược lại — không cần mạch gateway. (Tuỳ chọn: phòng quá rộng thì cắm thêm một nRF52840 làm gateway USB — `bridge.py`, mục 4.3.)
 
 | Thành phần | Vai trò |
 |---|---|
-| **Remote nRF52840** | Học sinh nhập số ghế (ID), chọn chữ A–J, bấm OK. Phát gói LOGIN / ANSWER; đọc beacon để bật đèn xanh khi server đã nhận. |
-| **Gateway nRF52840** | Thiết bị nRF52840 cắm USB: nghe mọi gói BLE trong phòng → in **1 dòng JSON/gói** ra cổng serial; nhận lệnh từ server (STATE, ATTEND…) → phát lại trong **beacon**. Không lọc, không loại trùng. |
-| **bridge.py** / **gateway.js** | Cầu nối serial ⇄ MQTT, không có logic. `bridge.py` chạy như dịch vụ khi gateway cắm vào server; `web/gateway.php` + `assets/gateway.js` làm cùng việc qua trình duyệt (Web Serial) khi gateway cắm vào máy GV khác. |
-| **Mosquitto** | MQTT broker: 1883 (chỉ trong máy), 9001 WebSocket có mật khẩu (qua Apache `/mqtt`, cho gateway cắm vào máy giáo viên). Không mở cổng MQTT ra mạng LAN. |
+| **Remote nRF52840** | Học sinh nhập số ghế (ID), chọn chữ A–J, bấm OK. Phát gói quảng bá LOGIN / ANSWER (mục 4.1); quét beacon của laptop để bật đèn xanh khi server đã nhận. |
+| **ble_scan.py** (dịch vụ `ars-ble`) | Bluetooth laptop ⇄ MQTT, không có logic. Quét gói quảng bá, lọc Manufacturer Data của ARS → JSON → `ars/<room>/resp`; nhận lệnh STATE/ATTEND/OPENMASK/ACKS → phát **4 gói beacon** song song qua BlueZ. `sudo ars ble` in mọi gói nghe được để kiểm tra firmware. |
+| **bridge.py** / **gateway.js** (tuỳ chọn) | Chỉ dùng khi có gateway nRF52840 cắm USB: cầu nối serial ⇄ MQTT (`sudo ars gateway usb`), hoặc qua trình duyệt (Web Serial) khi gateway cắm vào máy GV khác. |
+| **Mosquitto** | MQTT broker: 1883 (chỉ trong máy), 9001 WebSocket có mật khẩu (qua Apache `/mqtt`, chỉ cho gateway USB tuỳ chọn cắm vào máy giáo viên). Không mở cổng MQTT ra mạng LAN. |
 | **ingest.py** | "Trái tim": kiểm tra gói, ghi CSDL, soạn trạng thái gửi ngược cho Remote, tự đóng câu hết giờ. |
 | **MariaDB** | Lưu toàn bộ dữ liệu (lớp, câu hỏi, buổi học, đáp án, LMS…). |
 | **Web PHP** | Giáo viên điều khiển buổi học, màn chiếu, báo cáo; cổng học sinh / phụ huynh. **Web không nói MQTT**: chỉ ghi DB và tăng `sessions.state_rev`. |
@@ -42,19 +42,21 @@ Toàn bộ phần cứng là **nRF52840**: mỗi học sinh một Remote, cả p
 ```
 ars-server/
 ├── README.md                     Tài liệu này
-├── HUONG_DAN_CAI_DAT.md          Hướng dẫn cài đặt & vận hành chi tiết (Ubuntu, Windows, link cố định, gateway nRF52840)
+├── HUONG_DAN_CAI_DAT.md          Hướng dẫn cài đặt & vận hành chi tiết (Ubuntu, Windows, link cố định, Bluetooth / Remote nRF52840)
 ├── UPGRADE_V10/V11/V12.md        Ghi chú nâng cấp từng phiên bản (migration, tính năng mới, giới hạn)
 ├── CHANGES_V10.md                Danh sách file thay đổi ở v10
-├── config.ini.example            Mẫu cấu hình: DB, MQTT, cổng serial gateway, room, uploads (chép thành config.ini)
+├── config.ini.example            Mẫu cấu hình: DB, MQTT, room, Bluetooth [ble], cổng serial gateway (tuỳ chọn), uploads (chép thành config.ini)
 │
 ├── bridge/
-│   └── bridge.py                 Gateway USB serial ⇄ MQTT. Tự nối lại khi rút/cắm USB, báo gw/status mỗi 5 s
+│   ├── ble_scan.py               Bluetooth laptop ⇄ MQTT: quét gói Remote, phát beacon trạng thái (BlueZ). Báo gw/status mỗi 5 s
+│   ├── blecodec.py               Định dạng byte trên sóng Remote ⇄ laptop (mã hoá / giải mã, dùng cho cả test)
+│   └── bridge.py                 (tuỳ chọn) Gateway nRF52840 USB serial ⇄ MQTT. Tự nối lại khi rút/cắm USB
 ├── ingest/
 │   └── ingest.py                 Nhận gói từ MQTT → kiểm tra → ghi DB → phát STATE/ATTEND/OPENMASK/ACKS
 ├── common/
 │   └── arscfg.py                 Dùng chung cho Python: đọc config.ini, kết nối DB, mã hoá bitmap ghế / mặt nạ câu
 ├── tools/
-│   ├── sim_clickers.py           Giả lập gateway + N Remote ở tầng MQTT (chạy thử không cần phần cứng, thử tải)
+│   ├── sim_clickers.py           Giả lập N Remote ở tầng MQTT (chạy thử không cần phần cứng, thử tải)
 │   ├── i18n_wrap.py              Công cụ dịch: bọc chuỗi tiếng Việt bằng t()/te(), liệt kê khoá dịch
 │   ├── i18n_collect.py           Duyệt mọi trang trên máy chủ thử, liệt kê chữ tiếng Việt chưa có bản dịch
 │   └── i18n_static.py            Quét mã nguồn PHP, liệt kê chữ tiếng Việt chưa có bản dịch
@@ -76,10 +78,11 @@ ars-server/
 │
 ├── deploy/                       Cài đặt & vận hành trên Ubuntu
 │   ├── install_ubuntu.sh         Cài một lệnh: Apache+PHP, MariaDB, Mosquitto, Python libs, chép code vào /opt/ars-server
-│   ├── ars                       Lệnh tiện ích: ars status | logs | watch | sim | links | public on/off | backup…
+│   ├── ars                       Lệnh tiện ích: ars status | logs | ble | gateway ble/usb | watch | sim | links | public on/off | backup…
 │   ├── ars-watch                 Xem CSDL trực tiếp (gói vào/bị loại) trên terminal
 │   ├── ars-ingest.service        systemd: chạy ingest.py
-│   ├── ars-bridge.service        systemd: chạy bridge.py (nhóm dialout để mở cổng serial)
+│   ├── ars-ble.service           systemd: chạy ble_scan.py (nhóm bluetooth, tự rfkill unblock)
+│   ├── ars-bridge.service        systemd (tuỳ chọn, tắt sẵn): bridge.py cho gateway USB (nhóm dialout)
 │   ├── ars-mdns.service/.sh      Quảng bá tên ars.local trong LAN
 │   ├── apache-ars.conf           Alias /ars → web/, link ngắn /gv /hs, chặn lib/, proxy WebSocket /mqtt
 │   └── mosquitto-ars.conf        2 listener MQTT (1883 nội bộ, 9001 WebSocket có mật khẩu)
@@ -94,7 +97,7 @@ ars-server/
 │   ├── projector.php             Màn chiếu cho cả lớp (câu hỏi, đồng hồ, biểu đồ khi GV cho hiện)
 │   ├── gateway.php               Gateway USB cắm máy GV: Web Serial ⇄ MQTT ngay trong Chrome/Edge
 │   ├── sessions.php · results.php · export.php   Lịch sử buổi; kết quả (p, D, phương án nhiễu); xuất Excel
-│   ├── devices.php · mapping.php Tình trạng Remote (pin, RSSI, gói trùng) & gateway; ghép MAC Remote ↔ ghế học sinh
+│   ├── devices.php · mapping.php Tình trạng Remote (pin, RSSI, gói trùng) & bộ thu Bluetooth; ghép MAC Remote ↔ ghế học sinh
 │   ├── sets.php · set.php · compose.php          Ngân hàng câu hỏi; soạn câu; tách câu từ Word/Excel/PDF + trợ lý AI
 │   ├── media.php · question_file.php             Gắn ảnh/audio/video vào câu hỏi; phục vụ tệp có kiểm tra quyền
 │   ├── library.php · variants.php                Kho đề dùng chung (riêng/trường/công khai); tạo mã đề đảo câu/phương án
@@ -106,7 +109,7 @@ ars-server/
 │   ├── rewards.php               Thi đua: bảng xếp hạng, cửa hàng quà, duyệt quà
 │   ├── school.php · schools.php · teachers.php   Admin trường; quản trị trường; quản trị giáo viên
 │   ├── sync.php · notify.php     Đồng bộ lên Cloud; cấu hình & nhật ký Zalo/SMS
-│   ├── settings.php · practice_log.php           Cài đặt (AI, đường dẫn, kết nối gateway, Google/Facebook); lịch sử luyện tập HS
+│   ├── settings.php · practice_log.php           Cài đặt (AI, đường dẫn, kết nối clicker Bluetooth, Google/Facebook); lịch sử luyện tập HS
 │   ├── api/
 │   │   ├── state.php             JSON trạng thái buổi học (bảng điều khiển & màn chiếu gọi mỗi giây)
 │   │   ├── action.php            Lệnh điều khiển: mở/đóng/chiếu câu, hiện kết quả, giải phóng ghế, kết thúc → tăng state_rev
@@ -138,38 +141,35 @@ ars-server/
 
 ### 3.1 Trước buổi học
 1. Giáo viên tạo **lớp** với **mã lớp (room, 1–255)** và danh sách học sinh (**số ghế 1–99** = ID học sinh gõ trên Remote).
-2. Gateway của phòng học phải phát đúng room đó: `config.ini → [gateway] room` (bridge.py) hoặc room của lớp (gateway qua trình duyệt).
+2. Laptop phải phục vụ đúng room đó: `config.ini → [gateway] room` (dùng cho `ble_scan.py`; khi Remote đổi room thì gói vẫn được chuyển đúng `ars/<room>/resp`, nhưng beacon trạng thái chỉ phát cho room này).
 3. Giáo viên bấm **Bắt đầu** → tạo dòng `sessions` (status `running`). Mỗi room chỉ có **một buổi đang chạy**.
 
 ### 3.2 Điểm danh (LOGIN)
 ```mermaid
 sequenceDiagram
     participant R as Remote (nRF)
-    participant G as Gateway (USB)
-    participant B as bridge.py
+    participant L as Bluetooth laptop (ble_scan.py)
     participant I as ingest.py
     participant D as MariaDB
-    R->>G: BLE: LOGIN (room, id=ghế, seq) ×5 lần
-    G->>B: serial: {"mac","room","type":1,"id",...} (mỗi gói 1 dòng, kể cả trùng)
-    B->>I: MQTT ars/<room>/resp (QoS 1, thêm "via":"ble","ts")
+    R->>L: BLE quảng bá: LOGIN (room, id=ghế, seq) ×5 lần
+    L->>I: MQTT ars/<room>/resp {"mac","room","type":1,"id",...,"via":"ble","ts"} (QoS 1)
     I->>D: UPSERT devices (pin, RSSI, last_seen)
     I->>D: kiểm tra buổi, ghế, ghép MAC → INSERT session_logins
-    I->>B: MQTT ars/<room>/cmd/gw: ATTEND <bitmap>
-    B->>G: serial: "ATTEND 1E00…"
-    G-->>R: beacon chứa bitmap điểm danh → Remote thấy bit của mình → báo đã điểm danh
+    I->>L: MQTT ars/<room>/cmd/gw: ATTEND <bitmap>
+    L-->>R: beacon ATTEND chứa bitmap điểm danh → Remote thấy bit của mình → báo đã điểm danh
 ```
 
 ### 3.3 Trả lời câu hỏi (ANSWER)
 1. GV bấm **Mở câu** trên `session.php` → `api/action.php` ghi `session_questions` (status `open`, `deadline` theo đồng hồ MariaDB `NOW(3)`) → **tăng `sessions.state_rev`**.
-2. `ingest.py` (vòng `state_loop`, mỗi 0,3 s) thấy `state_rev` đổi → phát `STATE <room> <qid> 1 <bitmap>` + `OPENMASK` → gateway đưa vào beacon → Remote biết câu `qid` đang mở.
+2. `ingest.py` (vòng `state_loop`, mỗi 0,3 s) thấy `state_rev` đổi → phát `STATE <room> <qid> 1 <bitmap>` + `OPENMASK` → laptop phát beacon → Remote biết câu `qid` đang mở.
 3. Học sinh chọn chữ, bấm OK → Remote phát ANSWER (`q` = số thứ tự câu trong bộ, `ans`, `seq` mới) **5 lần**.
-4. Gateway in 5 dòng JSON → bridge → `ars/<room>/resp` → ingest **kiểm tra theo thứ tự**:
+4. Laptop nghe gói (một hoặc nhiều bản lặp) → `ble_scan.py` → `ars/<room>/resp` → ingest **kiểm tra theo thứ tự**:
 
    | # | Kiểm tra | Lý do loại (`rejected.reason`) |
    |---|---|---|
    | 1 | Đủ trường, kiểu đúng, MAC 17 ký tự, type 1/2, room 0–255 | `malformed` |
    | 2 | Room có buổi đang chạy | `no_session` |
-   | 3 | Gói phải đi qua gateway Bluetooth (`via` = `ble`) | `wrong_link` |
+   | 3 | Gói phải đến qua Bluetooth (`via` = `ble`) | `wrong_link` |
    | 4 | Nếu ghế/MAC đã ghép cố định (mapping.php) thì phải khớp | `mapping_mismatch` |
    | 5 | MAC đã điểm danh, và đúng ghế đã điểm danh | `not_logged_in` · `id_mismatch` |
    | 6 | Câu `q` đã được mở trong buổi | `q_not_open` |
@@ -192,7 +192,7 @@ sequenceDiagram
 | `responses` | **Mọi lượt bấm hợp lệ** (kể cả đổi đáp án): ghế, MAC, seq, chữ, RSSI, thời điểm ms |
 | `final_answers` (VIEW) | Đáp án cuối của mỗi ghế cho mỗi câu = lượt có `id` lớn nhất — dùng cho chấm điểm, thống kê |
 | `rejected` | Gói bị loại + lý do + bản gốc (gộp 5 bản lặp của một lần bấm thành 1 dòng trong 10 s) |
-| `gateways` | Trạng thái gateway theo room: online, gói/giây, cổng, cập nhật lúc |
+| `gateways` | Trạng thái bộ thu (Bluetooth laptop / gateway USB) theo room: online, gói/giây, cổng, cập nhật lúc |
 | `sessions`, `session_questions` | Buổi học, câu đã mở/đóng, hạn giờ, `state_rev`, `show_result` |
 
 Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/ma trận chủ đề, sổ câu sai của học sinh, điểm thi đua, tin Zalo/SMS cho phụ huynh, đồng bộ lên Cloud (`sync.php`).
@@ -201,16 +201,42 @@ Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/m
 
 ## 4. Giao thức truyền / nhận
 
-### 4.1 Remote ⇄ Gateway (BLE)
-- Gateway **nghe mọi gói** LOGIN/ANSWER các Remote trong phòng phát ra và **phát beacon** chứa trạng thái (STATE/ATTEND/OPENMASK/ACKS) cho mọi Remote cùng đọc — không cần ghép đôi từng Remote với gateway.
-- Định dạng byte trên sóng, kiểu quảng bá/quét BLE do **firmware Remote và gateway** quy định (không nằm trong repo này). Với server, **hợp đồng là dòng JSON ở cổng serial** (mục 4.2): firmware nào in đúng dòng JSON đó đều dùng được.
+### 4.1 Remote ⇄ Laptop (BLE quảng bá, không kết nối)
+- Remote **phát gói quảng bá** (advertising) LOGIN/ANSWER; laptop **quét** (BlueZ, `ble_scan.py`) — không ghép đôi, không kết nối GATT, nên cả lớp gửi cùng lúc được.
+- Laptop **phát beacon** (quảng bá non-connectable) chứa trạng thái; mọi Remote cùng quét để biết câu đang mở và đã được nhận chưa.
 - Một lần bấm OK = **1 seq, phát 5 lần** (chống mất gói); bấm lần mới → seq tăng (0–255, quay vòng).
-- Room nằm trong beacon: Remote ghi nhớ room khi học sinh nhập ID → nhiều phòng cạnh nhau không lẫn lớp.
+- Định danh Remote = **địa chỉ BLE** của nó → firmware dùng địa chỉ **random static** cố định (mặc định của nRF52840), không bật privacy (địa chỉ đổi liên tục sẽ bị coi là máy khác).
+- Dữ liệu nằm trong **Manufacturer Specific Data** (AD type `0xFF`), mã công ty `[ble] company_id` (mặc định `0xFFFF` — mã thử nghiệm), byte đầu `0xA5`. Mã nguồn tham chiếu: `bridge/blecodec.py`.
 
-### 4.2 Gateway ⇄ Laptop (USB serial)
-- **115200 baud, 8N1, mỗi bản tin 1 dòng kết thúc bằng `\n`.** Dòng không bắt đầu bằng `{` là log của firmware, bị bỏ qua.
+**Remote → laptop** (9 byte sau mã công ty):
 
-**Gateway → laptop** — mỗi gói BLE nghe được, không lọc:
+| Byte | Ý nghĩa |
+|---|---|
+| 0 | `0xA5` (dấu nhận diện ARS) |
+| 1 | type: `1` = LOGIN, `2` = ANSWER |
+| 2 | room (0–255) |
+| 3 | số ghế / ID (1–99) |
+| 4 | câu q (1–64; LOGIN: 0) |
+| 5 | seq (0–255) |
+| 6 | đáp án: `0` = không có, `1`–`10` = A–J (hoặc mã ASCII `'A'`–`'J'`) |
+| 7–8 | pin mV, uint16 little-endian (`0` = không đo) |
+
+Ví dụ ghế 7, room 1, câu 3, seq 12, chọn B, pin 2950 mV: company `0xFFFF`, data `A5 02 01 07 03 0C 02 86 0B`.
+Trong firmware nRF5 SDK / Zephyr: `BT_DATA(BT_DATA_MANUFACTURER_DATA, {0xFF,0xFF, 0xA5,0x02,0x01,0x07,0x03,0x0C,0x02,0x86,0x0B}, 11)`.
+
+**Laptop → Remote** (beacon, 4 gói quảng bá phát song song, cùng mã công ty, mỗi gói một loại):
+
+| Gói | Byte |
+|---|---|
+| STATE | `A5 10` room qid open(0/1) + bitmap 13 byte ghế **đã có đáp án** câu qid |
+| ATTEND | `A5 11` room + bitmap 13 byte ghế **đã điểm danh** |
+| OPENMASK | `A5 12` room + 8 byte mặt nạ câu đang mở (câu p ở bit p−1) — cho phím ◀ ▶ |
+| ACKS | `A5 13` room n + n cặp (ghế, câu), n ≤ 6 — xác nhận gần nhất |
+
+Remote chỉ đọc beacon có room trùng room mình nhớ, rồi xem bit ghế của mình để bật đèn xanh. Phát beacon cần Linux (BlueZ ≥ 5.50); trên Windows/macOS `ble_scan.py` chỉ nghe.
+
+### 4.2 Dữ liệu gói và lệnh trạng thái
+**Dạng JSON** (ble_scan.py giải mã ra, hoặc gateway USB in ra mỗi dòng) — đây là dữ liệu ingest nhận:
 ```json
 {"mac":"C4:1A:00:11:22:33","room":1,"type":2,"id":7,"q":3,"seq":12,"ans":"B","batt":2950,"rssi":-61}
 ```
@@ -224,9 +250,9 @@ Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/m
 | `seq` | 0–255 | Số thứ tự lần bấm (5 bản lặp cùng seq) |
 | `ans` | `A`–`J` | Chữ đã chọn (LOGIN: rỗng). Phím 1–9 = A–I, 0 = J |
 | `batt` | mV | Điện áp pin (cảnh báo dưới `[ingest] low_batt_mv`, mặc định 2600) |
-| `rssi` | dBm | Cường độ sóng gateway đo được |
+| `rssi` | dBm | Cường độ sóng bộ thu đo được |
 
-**Laptop → gateway** — gateway phát nguyên nội dung vào beacon:
+**Lệnh trạng thái** ingest gửi xuống (`ars/<room>/cmd/gw`), bộ thu chuyển thành beacon:
 | Lệnh | Ý nghĩa |
 |---|---|
 | `STATE <room> <qid> <open 0/1> <13 byte hex>` | Câu đang chiếu, đang mở hay đóng, bitmap ghế **đã có đáp án** câu đó |
@@ -235,29 +261,34 @@ Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/m
 | `ACKS <ghế:câu,...>` hoặc `ACKS -` | 6 xác nhận gần nhất (để Remote biết câu không phải câu đang chiếu cũng đã nhận) |
 
 **Bitmap:** ghế n ở byte `n ÷ 8`, bit `n mod 8`, bit thấp trước, 13 byte = 104 bit (`common/arscfg.py → bitmap_hex`). Ví dụ ghế 1–4 → `1E000000000000000000000000`.
-Server phát lại toàn bộ trạng thái khi có thay đổi (≤ 0,3 s) **và định kỳ mỗi 5 s** (`[ingest] state_refresh_s`), nên gateway khởi động lại hay mất một lệnh vẫn tự đúng.
+Server phát lại toàn bộ trạng thái khi có thay đổi (≤ 0,3 s) **và định kỳ mỗi 5 s** (`[ingest] state_refresh_s`), nên bộ thu khởi động lại hay mất một lệnh vẫn tự đúng.
+
+### 4.2b Gateway nRF52840 cắm USB (tuỳ chọn)
+Phòng quá rộng so với tầm Bluetooth laptop thì cắm thêm một nRF52840 làm gateway (`sudo ars gateway usb`; quay lại: `sudo ars gateway ble`). **115200 baud, 8N1**: gateway in mỗi gói nghe được thành 1 dòng JSON như mục 4.2 (dòng không bắt đầu bằng `{` là log, bị bỏ qua), nhận mỗi lệnh trạng thái 1 dòng và tự phát beacon.
 
 ### 4.3 MQTT (bên trong server)
 | Topic | Chiều | QoS | Nội dung |
 |---|---|---|---|
-| `ars/<room>/resp` | bridge/gateway.js → ingest | 1 | JSON gói như 4.2, thêm `via` (`ble`), `ts` |
-| `ars/<room>/cmd/gw` | ingest → bridge/gateway.js | 1 | Một lệnh STATE / ATTEND / OPENMASK / ACKS |
-| `ars/<room>/state` | ingest → mọi bên | 1, **retain** | JSON trạng thái đầy đủ (`qid, open, answered[], attend[], open_positions[], acks, mode, cmds[]`). Bridge vừa nối USB đọc bản giữ lại để phát ngay |
+| `ars/<room>/resp` | ble_scan.py (hoặc bridge/gateway.js) → ingest | 1 | JSON gói như 4.2, thêm `via` (`ble`), `ts` |
+| `ars/<room>/cmd/gw` | ingest → ble_scan.py (hoặc bridge/gateway.js) | 1 | Một lệnh STATE / ATTEND / OPENMASK / ACKS |
+| `ars/<room>/state` | ingest → mọi bên | 1, **retain** | JSON trạng thái đầy đủ (`qid, open, answered[], attend[], open_positions[], acks, mode, cmds[]`). Bộ thu vừa khởi động đọc bản giữ lại để phát beacon ngay |
 | `ars/<room>/live` | ingest → (tuỳ chọn) | 0 | Số đã trả lời, phân bố đáp án |
-| `ars/<room>/gw/status` | bridge/gateway.js → ingest | 1, retain | `{"online", "port", "pkt_per_s"}` mỗi 5 s; Last Will = offline |
+| `ars/<room>/gw/status` | ble_scan.py / bridge → ingest | 1, retain | `{"online", "port", "pkt_per_s"}` mỗi 5 s (`port` = `bluetooth hci0` hoặc cổng USB); Last Will = offline |
 
-Phần cứng chỉ dùng **nRF52840** nên mọi gói đều đi qua gateway (`bridge.py` hoặc `gateway.js`); MQTT chỉ mở trong máy (1883) và qua WebSocket `/mqtt` có mật khẩu cho gateway cắm vào máy giáo viên.
+Phần cứng chỉ dùng **Remote nRF52840** nên mọi gói đều đến qua Bluetooth (`ble_scan.py`, hoặc gateway USB tuỳ chọn); MQTT chỉ mở trong máy (1883) và qua WebSocket `/mqtt` có mật khẩu (chỉ cho gateway USB cắm vào máy giáo viên).
 
 ### 4.4 Lưu ý khi sử dụng
 - **Room phải khớp**: lớp đang học ↔ `[gateway] room` ↔ room Remote nhớ. Sai room → gói bị loại `no_session`. Đổi room: học sinh nhập lại ID trên Remote.
-- **Chỉ nhận gói qua gateway Bluetooth**: gói có `"via"` khác `ble` bị loại `wrong_link`.
+- **Chỉ nhận gói qua Bluetooth**: gói có `"via"` khác `ble` bị loại `wrong_link`.
+- **Bluetooth laptop phải bật**: dịch vụ `ars-ble` tự bỏ chặn (`rfkill unblock bluetooth`) và bật adapter; tắt Bluetooth giữa giờ → Remote không gửi được, web báo "Bluetooth laptop: chưa bật". Tầm thu khoảng 10–20 m trong phòng; đặt laptop giữa lớp hoặc dùng gateway USB (mục 4.2b).
+- Kiểm tra Remote mới nạp firmware: `sudo ars ble` in mọi gói quảng bá, dòng `→ ARS {...}` là gói đúng định dạng 4.1.
 - **Một ID một máy** trong một buổi. Học sinh đổi Remote giữa giờ → GV bấm ô ghế để **giải phóng ID**, rồi học sinh điểm danh lại.
 - **Ghép Remote cố định** (Thiết bị → Ghép Remote) chống mượn máy bấm hộ; đổi ghép ngoài giờ học.
-- Tỉ lệ **gói trùng 70–80 % là bình thường** (mỗi lần bấm phát 5 lần). Nhiều gói `late`/`q_closed` = học sinh bấm sau khi đóng câu.
+- Tỉ lệ **gói trùng cao là bình thường** (mỗi lần bấm phát 5 lần; laptop có thể nghe được ít bản lặp hơn gateway). Nhiều gói `late`/`q_closed` = học sinh bấm sau khi đóng câu.
 - Thời gian (mở câu, hạn giờ, nhận gói) đều lấy theo **đồng hồ MariaDB** — web và ingest không lệch giờ nhau.
-- Gateway rút ra cắm lại: bridge tự nối lại sau 2 s và phát lại trạng thái giữ lại. Linux thường là `/dev/ttyACM0` (người dùng dịch vụ cần nhóm `dialout`); Windows là `COMx` — xem `python bridge/bridge.py --list`.
+- (Gateway USB) rút ra cắm lại: bridge tự nối lại sau 2 s và phát lại trạng thái giữ lại. Linux thường là `/dev/ttyACM0` (người dùng dịch vụ cần nhóm `dialout`); Windows là `COMx` — xem `python bridge/bridge.py --list`.
 - Bộ câu dùng với Remote tối đa **64 câu** (mặt nạ OPENMASK 8 byte), lớp tối đa **99 ghế**, câu 2–10 lựa chọn (A–J).
-- Gateway qua trình duyệt (`gateway.php`) cần **Chrome/Edge** và trang mở bằng **https hoặc localhost**; giữ tab mở suốt buổi.
+- (Gateway USB) qua trình duyệt (`gateway.php`) cần **Chrome/Edge** và trang mở bằng **https hoặc localhost**; giữ tab mở suốt buổi.
 - Xem trực tiếp: `ars logs` (gói vào / bị loại), `ars watch`, trang **Thiết bị** (pin, RSSI, lần cuối thấy), bảng "Gói bị server từ chối" trên bảng điều khiển.
 
 ---
@@ -267,19 +298,20 @@ Phần cứng chỉ dùng **nRF52840** nên mọi gói đều đi qua gateway (`
 **Ubuntu (khuyên dùng):**
 ```bash
 sudo bash deploy/install_ubuntu.sh        # cài/cập nhật; giữ nguyên config.ini và dữ liệu
-ars status                                # apache2, mariadb, mosquitto, ars-ingest, ars-bridge
+ars status                                # apache2, mariadb, mosquitto, bluetooth, ars-ingest, ars-ble
+sudo ars ble                              # bấm Remote: thấy dòng '→ ARS' là laptop nghe được
 ```
 Mở `http://localhost/gv` (giáo viên) · `http://localhost/hs` (học sinh) · `/ars/parent/` (phụ huynh). Lần đầu tạo tài khoản quản trị.
 Link Internet https: `sudo ars public on` (Tailscale Funnel).
 
 **Cập nhật code đã cài:**
 ```bash
-sudo rsync -a --delete --exclude config.ini --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
-sudo systemctl restart apache2 ars-ingest ars-bridge
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-usb --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo systemctl restart apache2 ars-ingest ars-ble
 ```
 Có migration mới (`db/migrate_00X_*.sql`) thì chạy trước: `mysql -u root -p ars < db/migrate_00X_….sql`.
 
-**Windows / chạy tay:** XAMPP (Apache + MariaDB) + Mosquitto + Python 3.10 (`pip install paho-mqtt pymysql pyserial`); tạo CSDL bằng `schema.sql` rồi lần lượt `migrate_002` → `009`; chép `config.ini.example` → `config.ini`; mỗi buổi chạy `python ingest/ingest.py` và `python bridge/bridge.py`. Chi tiết: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
+**Windows / chạy tay:** XAMPP (Apache + MariaDB) + Mosquitto + Python 3.10 (`pip install paho-mqtt pymysql bleak`); tạo CSDL bằng `schema.sql` rồi lần lượt `migrate_002` → `009`; chép `config.ini.example` → `config.ini`; mỗi buổi chạy `python ingest/ingest.py` và `python bridge/ble_scan.py` (Windows chỉ nghe được Remote, không phát beacon — nên chạy server trên Ubuntu). Chi tiết: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md).
 
 **Không có phần cứng:**
 ```bash

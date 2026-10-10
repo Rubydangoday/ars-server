@@ -58,11 +58,13 @@
     const ended = s.session.status !== 'running';
     $('st-status').textContent = ended ? T('đã kết thúc') : T('đang học');
     $('st-status').className = 'tag ' + (ended ? '' : 'live');
-    const gw = $('gw');                             // gateway nRF52840 (cắm máy chủ hoặc máy giáo viên qua trình duyệt)
-    $('gw-usb').hidden = ended;
+    const gw = $('gw');                             // máy chủ thu Remote bằng Bluetooth của laptop (ars-ble) — hoặc gateway USB nếu có
     {
+      const bt = !s.gateway.port || String(s.gateway.port).startsWith('bluetooth');
       const where = s.gateway.port === 'webserial' ? T(' (USB máy GV)') : '';
-      gw.textContent = s.gateway.online ? T('Gateway{w}: đang nhận ({n} gói/s)', { w: where, n: s.gateway.pkt_per_s ?? 0 }) : T('Gateway: chưa kết nối');
+      gw.textContent = bt
+        ? (s.gateway.online ? T('Bluetooth laptop: đang nghe ({n} gói/s)', { n: s.gateway.pkt_per_s ?? 0 }) : T('Bluetooth laptop: chưa bật'))
+        : (s.gateway.online ? T('Gateway{w}: đang nhận ({n} gói/s)', { w: where, n: s.gateway.pkt_per_s ?? 0 }) : T('Gateway: chưa kết nối'));
       gw.className = 'gw ' + (s.gateway.online ? 'on' : 'off');
     }
     $('allow_change').checked = s.session.allow_change;

@@ -1,0 +1,20 @@
+[Unit]
+Description=ARS ble — Bluetooth laptop <-> Remote nRF52840 <-> MQTT
+After=bluetooth.service mosquitto.service
+Wants=bluetooth.service mosquitto.service
+
+[Service]
+User=ars
+Group=ars
+SupplementaryGroups=bluetooth
+WorkingDirectory=/opt/ars-server
+Environment=ARS_CONFIG=/opt/ars-server/config.ini
+Environment=PYTHONUNBUFFERED=1
+# Bluetooth bị tắt bằng phím/công tắc phần mềm thì bật lại (chạy bằng root nhờ dấu +)
+ExecStartPre=+-/usr/sbin/rfkill unblock bluetooth
+ExecStart=/usr/bin/python3 /opt/ars-server/bridge/ble_scan.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

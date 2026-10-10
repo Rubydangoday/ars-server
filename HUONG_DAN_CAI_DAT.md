@@ -17,8 +17,8 @@ sudo bash deploy/install_ubuntu.sh
 ```
 
 Script tự cài Apache + PHP, MariaDB, Mosquitto, Avahi, Python, php-curl, poppler-utils; chép mã vào `/opt/ars-server`;
-tạo/cập nhật CSDL; tạo thư mục lưu bài giảng `/var/lib/ars/uploads`; bật dịch vụ `ars-ingest`, `ars-bridge`, `ars-mdns`;
-bật MQTT trong máy và WebSocket `/mqtt` (có mật khẩu) cho gateway cắm vào máy giáo viên.
+tạo/cập nhật CSDL; tạo thư mục lưu bài giảng `/var/lib/ars/uploads`; bật dịch vụ `ars-ingest`, `ars-ble` (Bluetooth của laptop thu Remote), `ars-mdns`;
+bật MQTT trong máy và WebSocket `/mqtt` (có mật khẩu, chỉ dùng cho gateway USB tuỳ chọn).
 Chạy lại nhiều lần không mất dữ liệu, không đổi mật khẩu CSDL.
 
 Nếu bước 1/7 báo lỗi kho Spotify (`NO_PUBKEY … repository.spotify.com`):
@@ -58,15 +58,17 @@ Tên máy trong link đổi được ở trang quản trị Tailscale (Machines 
 - Trợ lý AI, trợ lý học sinh, tên trường do quản trị viên cài; giáo viên khác chỉ sửa tài khoản của mình.
 - **Mã lớp (room) không trùng giữa các giáo viên** (web tự gợi ý số trống) để clicker không gửi nhầm lớp.
 
-## 1d. Kết nối Remote: Bluetooth qua gateway nRF52840
+## 1d. Kết nối Remote: Bluetooth của laptop
 
-Phần cứng chỉ gồm **Remote nRF52840** (mỗi học sinh một cái) và **một gateway nRF52840** cắm USB. Remote phát Bluetooth, gateway thu cả phòng rồi chuyển về máy chủ. Hai cách cắm gateway:
-1. Cắm **máy chủ** → dịch vụ `ars-bridge` (room trong `config.ini`, mục `[gateway]`).
-2. Cắm **máy của giáo viên** (phòng khác, không cài gì): bảng điều khiển → **🔌 Gateway USB máy này** → **Kết nối gateway** → chọn cổng.
-   Cần Chrome/Edge và trang mở bằng link **https** (link Internet) hoặc `localhost`. Giữ tab mở trong buổi học.
+Phần cứng chỉ gồm **Remote nRF52840** (mỗi học sinh một cái). Remote phát gói Bluetooth, **laptop chạy máy chủ thu trực tiếp bằng Bluetooth của chính nó** (dịch vụ `ars-ble`) và phát lại trạng thái (câu đang mở, đã điểm danh, đã nhận) để Remote bật đèn xanh. Không cần mạch gateway.
 
-Room trên Remote phải trùng mã lớp (room) đang học. Gói không đi qua gateway Bluetooth bị loại (lý do *Sai kiểu kết nối*).
-Thử không cần phần cứng: `ars sim 30 1` (30 Remote giả lập, room 1).
+1. Bật Bluetooth của laptop (dịch vụ `ars-ble` cũng tự bỏ chặn và bật adapter).
+2. Room trong `/opt/ars-server/config.ini`, mục `[gateway] room`, phải trùng mã lớp (room) đang học; sửa xong chạy `sudo systemctl restart ars-ble`.
+3. Kiểm tra Remote: `sudo ars ble` rồi bấm nút trên Remote — dòng `→ ARS {...}` nghĩa là laptop nghe được và đúng định dạng. Không thấy dòng nào: Remote chưa phát đúng gói (xem README mục 4.1: Manufacturer Data mã `0xFFFF`, byte đầu `0xA5`).
+4. Trên web, bảng điều khiển buổi học hiện **Bluetooth laptop: đang nghe (… gói/s)**.
+
+Gói không đến qua Bluetooth bị loại (lý do *Sai kiểu kết nối*). Thử không cần phần cứng: `ars sim 30 1` (30 Remote giả lập, room 1).
+Phòng quá rộng so với tầm Bluetooth laptop (khoảng 10–20 m): có thể cắm thêm một nRF52840 làm gateway USB — `sudo ars gateway usb` (quay lại: `sudo ars gateway ble`).
 
 ## 2. Mỗi lần dùng
 
@@ -74,11 +76,11 @@ Các dịch vụ tự chạy khi bật máy. Chỉ cần:
 
 | Việc | Terminal | Trình duyệt |
 |---|---|---|
-| Kiểm tra | `ars status` (5 dòng `active`) | — |
+| Kiểm tra | `ars status` (các dịch vụ `active`; `ars-bridge` `inactive` là đúng) | — |
 | Giáo viên | `ars links` | `http://ars.local/gv` (hoặc link Internet) |
 | Học sinh | — | `http://ars.local/hs` · quét QR ở trang Tổng quan |
 | Chạy thử không cần mạch | `ars sim 30` | Mở bảng điều khiển, bấm **Mở** câu |
-| Có gateway thật | `ars ports` → nếu không phải `/dev/ttyACM0` thì sửa `/opt/ars-server/config.ini` rồi `sudo systemctl restart ars-bridge` | — |
+| Có Remote thật | Bật Bluetooth laptop, `sudo ars ble` rồi bấm Remote để kiểm tra | Bảng điều khiển: **Bluetooth laptop: đang nghe** |
 
 ## 3. Lệnh tiện ích
 
@@ -86,15 +88,17 @@ Các dịch vụ tự chạy khi bật máy. Chỉ cần:
 |---|---|
 | `ars links` | in các link cố định (LAN, IP, Internet) |
 | `sudo ars public on` / `off` | bật/tắt link Internet cố định (Tailscale Funnel) |
-| `ars status` | trạng thái 6 dịch vụ |
+| `ars status` | trạng thái các dịch vụ |
 | `ars logs` | gói tin vào / bị loại (Ctrl+C thoát) |
 | `ars watch` | xem CSDL trực tiếp: buổi đang chạy, đáp án, điểm danh, gói bị loại, bài học sinh làm |
 | `ars db` | mở MariaDB (gõ SQL, `exit` để thoát) |
 | `ars sql "SELECT * FROM students"` | chạy nhanh một câu SQL |
 | `ars tables` | liệt kê bảng và số dòng |
-| `ars sim 30 1` | 30 Remote nRF52840 giả lập (room 1), gửi qua gateway giả lập |
+| `ars sim 30 1` | 30 Remote nRF52840 giả lập (room 1), gửi thẳng vào MQTT |
+| `sudo ars ble` | in mọi gói Bluetooth laptop nghe được — kiểm tra firmware Remote (Ctrl+C thoát) |
+| `sudo ars gateway ble` / `usb` | thu bằng Bluetooth laptop (mặc định) / bằng gateway nRF52840 cắm USB |
 | `ars backup` | sao lưu CSDL ra file .sql |
-| `sudo systemctl restart ars-ingest ars-bridge` | khởi động lại |
+| `ars restart` | khởi động lại ingest + bộ thu Bluetooth |
 
 ## 4. Thử nhanh trên web (dùng file trong thư mục `mau/`)
 

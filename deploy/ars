@@ -4,13 +4,24 @@ DST=/opt/ars-server
 ini() { sudo awk -v s="[$1]" -v k="$2" '$0==s{f=1;next} /^\[/{f=0} f && $1==k {sub(/^[^=]*= */,""); print; exit}' $DST/config.ini 2>/dev/null; }
 case "${1:-}" in
   status)
-    for s in apache2 mariadb mosquitto ars-ingest ars-bridge ars-mdns; do
+    for s in apache2 mariadb mosquitto bluetooth ars-ingest ars-ble ars-bridge ars-mdns; do
       printf '%-12s %s\n' "$s" "$(systemctl is-active $s 2>/dev/null || echo '?')"
     done
     ;;
-  logs)   journalctl -u ars-ingest -u ars-bridge -f -n 50 ;;
-  restart) sudo systemctl restart ars-ingest ars-bridge && echo "đã khởi động lại ingest + bridge" ;;
-  sim)    # chạy thử không cần phần cứng: ars sim [số Remote] [room] — giả lập Remote + gateway nRF52840
+  logs)   journalctl -u ars-ingest -u ars-ble -u ars-bridge -f -n 50 ;;
+  restart) svc=ars-ble; systemctl is-enabled -q ars-bridge 2>/dev/null && svc=ars-bridge
+    sudo systemctl restart ars-ingest $svc && echo "đã khởi động lại ingest + $svc" ;;
+  ble)    # in các gói quảng bá Bluetooth máy chủ nghe được (kiểm tra firmware Remote); dừng dịch vụ ars-ble trong lúc xem
+    sudo systemctl stop ars-ble; sudo rfkill unblock bluetooth 2>/dev/null
+    echo "Bấm nút trên Remote — dòng '→ ARS' là gói đúng định dạng. Ctrl+C để thoát."
+    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/bridge/ble_scan.py --dump; sudo systemctl start ars-ble ;;
+  gateway) # chọn cách thu sóng: ars gateway ble (Bluetooth của máy, mặc định) | usb (gateway nRF52840 cắm USB)
+    case "${2:-}" in
+      usb) sudo systemctl disable --now ars-ble; sudo systemctl enable --now ars-bridge; sudo touch $DST/.gateway-usb; echo "Đang dùng gateway nRF52840 cắm USB (ars-bridge)" ;;
+      ble) sudo systemctl disable --now ars-bridge; sudo systemctl enable --now ars-ble; sudo rm -f $DST/.gateway-usb; echo "Đang dùng Bluetooth của máy chủ (ars-ble)" ;;
+      *) systemctl is-enabled -q ars-bridge 2>/dev/null && echo "usb (ars-bridge)" || echo "ble (ars-ble)"; echo "Đổi: ars gateway ble | usb" ;;
+    esac ;;
+  sim)    # chạy thử không cần phần cứng: ars sim [số Remote] [room] — giả lập Remote nRF52840 ở tầng MQTT
     sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/tools/sim_clickers.py --room "${3:-1}" -n "${2:-30}" --duration 300 ;;
   links)  # in các link cố định cho giáo viên / học sinh
     lan=$(ini lan name); lan=${lan:-ars.local}; ip=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -18,7 +29,7 @@ case "${1:-}" in
     echo "Trong mạng nội bộ (tên cố định): http://$lan/gv   ·   http://$lan/hs"
     echo "Trong mạng nội bộ (IP):          http://$ip/gv   ·   http://$ip/hs"
     [ -n "$pub" ] && echo "Qua Internet (mọi nơi):          $pub/gv   ·   $pub/hs" || echo "Qua Internet: chưa bật — sudo ars public on"
-    echo "Gateway nRF52840 qua trình duyệt: ws://$lan/mqtt  user $(ini mqtt_public user)" ;;
+    echo "Gateway USB qua trình duyệt (tuỳ chọn): ws://$lan/mqtt  user $(ini mqtt_public user)" ;;
   public) # link Internet cố định bằng Tailscale Funnel: ars public on | off | status
     command -v tailscale >/dev/null || { echo "Chưa cài Tailscale. Cài:  curl -fsSL https://tailscale.com/install.sh | sh  rồi  sudo tailscale up"; exit 1; }
     case "${2:-status}" in
@@ -63,5 +74,5 @@ case "${1:-}" in
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | gateway ble|usb | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac

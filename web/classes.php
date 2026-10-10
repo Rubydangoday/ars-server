@@ -59,6 +59,6 @@ page_head(t('Lớp học'), 'classes.php');
     <label><?= te('Mã lớp (room)') ?> <input name="room_id" type="number" min="1" max="255" value="<?= $next_room ?>" required></label>
     <button class="primary"><?= te('Tạo lớp') ?></button>
   </form>
-  <p class="muted small"><?= te('Mã lớp là số gateway phát trong beacon; clicker ghi nhớ mã này khi học sinh nhập ID. Cấu hình [gateway] room trong config.ini phải trùng với mã lớp đang học.') ?></p>
+  <p class="muted small"><?= te('Mã lớp là số máy chủ phát trong beacon Bluetooth; Remote ghi nhớ mã này khi học sinh nhập ID. Cấu hình [gateway] room trong config.ini phải trùng với mã lớp đang học.') ?></p>
 </details>
 <?php page_foot();

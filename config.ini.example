@@ -13,11 +13,19 @@ host = 127.0.0.1
 port = 1883
 
 [gateway]
-; cổng USB của gateway: Windows "COM5", Linux "/dev/ttyACM0", macOS "/dev/cu.usbmodem1101"
+; mã lớp (room) mà laptop này phục vụ — trùng với room_id của lớp trên web
+room = 1
+; (chỉ khi dùng gateway nRF52840 cắm USB — bridge.py) cổng USB: Windows "COM5", Linux "/dev/ttyACM0"
 serial = COM5
 baud = 115200
-; mã lớp (room) mà gateway này phục vụ — trùng với room_id của lớp trên web
-room = 1
+
+[ble]
+; Thu sóng Remote bằng Bluetooth của laptop (bridge/ble_scan.py, dịch vụ ars-ble)
+adapter = hci0
+; mã công ty trong Manufacturer Data mà firmware Remote dùng (0xFFFF = mã thử nghiệm)
+company_id = 0xFFFF
+; 1 = phát beacon trạng thái (câu đang mở, điểm danh, xác nhận) về Remote — chỉ Linux/BlueZ; 0 = chỉ nghe
+advertise = 1
 
 [ingest]
 ; pin dưới mức này (mV) thì web cảnh báo "pin yếu"

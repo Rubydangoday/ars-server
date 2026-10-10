@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sim_clickers.py — giả lập gateway nRF52840 + N Remote nRF52840 ở tầng MQTT (không cần phần cứng).
+"""sim_clickers.py — giả lập N Remote nRF52840 + bộ thu Bluetooth laptop (ble_scan.py) ở tầng MQTT (không cần phần cứng).
 
 Mỗi clicker ảo làm đúng như firmware thật:
   - điểm danh: gửi LOGIN (5 lần, cùng seq) tới khi thấy bit của mình trong ATTEND;
@@ -42,7 +42,7 @@ class Sim:
         self.cli = arscfg.mqtt_client(f'ars-sim-{a.room}-{random.randint(0, 9999)}')
         self.cli.on_message = self.on_msg
         self.cli.connect(cp['mqtt']['host'], int(cp['mqtt'].get('port', 1883)))
-        self.cli.subscribe(f'ars/{a.room}/cmd/gw', qos=1)  # như gateway: đọc lệnh STATE/ATTEND phát vào beacon
+        self.cli.subscribe(f'ars/{a.room}/cmd/gw', qos=1)  # như ble_scan.py: đọc lệnh STATE/ATTEND phát vào beacon
         self.cli.loop_start()
 
     def on_msg(self, c, u, msg):
@@ -122,9 +122,9 @@ class Sim:
         self.cli.publish(f'ars/{self.room}/resp', 'khong phai json', qos=1)
 
     def gw_status(self):
-        """Giả làm bridge báo gateway đang chạy (để web hiện 'Gateway: đang nhận')."""
+        """Giả làm ble_scan.py báo đang nghe (để web hiện 'Bluetooth laptop: đang nghe')."""
         while True:
-            self.cli.publish(f'ars/{self.room}/gw/status', json.dumps({'online': True, 'port': 'SIM', 'pkt_per_s': 0,
+            self.cli.publish(f'ars/{self.room}/gw/status', json.dumps({'online': True, 'port': 'bluetooth sim', 'pkt_per_s': 0,
                                                                        'ts': time.time()}), qos=1, retain=True)
             time.sleep(5)
 
@@ -137,7 +137,7 @@ class Sim:
             threading.Thread(target=self.bad_packets, daemon=True).start()
         for t in th:
             t.join()
-        self.cli.publish(f'ars/{self.room}/gw/status', json.dumps({'online': False, 'port': 'SIM'}), qos=1, retain=True)
+        self.cli.publish(f'ars/{self.room}/gw/status', json.dumps({'online': False, 'port': 'bluetooth sim'}), qos=1, retain=True)
         print(f'\n{self.a.n} clicker, mất gói {self.a.loss:.0%}: bấm OK {self.sent} lần, '
               f'đèn xanh {self.acked} lần ({(self.acked / self.sent * 100) if self.sent else 0:.1f} %)')
         if self.lat:

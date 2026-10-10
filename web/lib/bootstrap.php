@@ -13,7 +13,7 @@ const REJECT_REASONS = [
     'mapping_mismatch' => 'Remote không đúng học sinh đã ghép',
     'wrong_link' => 'Sai kiểu kết nối (lớp đang chọn kiểu khác)',
 ];
-const CONN_MODES = ['ble' => 'Bluetooth'];        // phần cứng chỉ dùng nRF52840: Remote BLE → gateway USB
+const CONN_MODES = ['ble' => 'Bluetooth'];        // phần cứng chỉ dùng nRF52840: Remote BLE → Bluetooth laptop (ars-ble)
 
 function cfg(): array {
     static $c = null;

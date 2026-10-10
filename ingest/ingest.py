@@ -33,6 +33,14 @@ LETTERS = 'ABCDEFGHIJ'
 PKT_LOGIN, PKT_ANSWER = 1, 2
 
 
+def state_cmds(room, st):
+    """Trạng thái → 4 dòng lệnh cho gateway USB / beacon Bluetooth (README mục 4.2)."""
+    return [f"STATE {room} {st['qid']} {st['open']} {arscfg.bitmap_hex(st['answered'])}",
+            f"ATTEND {arscfg.bitmap_hex(st['attend'])}",
+            f"OPENMASK {arscfg.mask64_hex(st['open_positions'])}",
+            "ACKS " + (','.join(f'{a}:{b}' for a, b in st['acks']) or '-')]
+
+
 class Ingest:
     def __init__(self, cp):
         self.cp = cp
@@ -256,11 +264,7 @@ class Ingest:
 
     def publish_state(self, room):
         st = self.build_state(room)
-        cmds = [f"STATE {room} {st['qid']} {st['open']} {arscfg.bitmap_hex(st['answered'])}",
-                f"ATTEND {arscfg.bitmap_hex(st['attend'])}",
-                f"OPENMASK {arscfg.mask64_hex(st['open_positions'])}",
-                "ACKS " + (','.join(f'{a}:{b}' for a, b in st['acks']) or '-')]
-        st['cmds'] = cmds
+        st['cmds'] = cmds = state_cmds(room, st)
         for c in cmds:
             self.client.publish(f'ars/{room}/cmd/gw', c, qos=1)
         self.client.publish(f'ars/{room}/state', json.dumps(st), qos=1, retain=True)
