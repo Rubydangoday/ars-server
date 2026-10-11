@@ -6,7 +6,7 @@ Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Re
 
 Hướng dẫn sử dụng cho giáo viên, học sinh, phụ huynh và lập trình viên: **[huong-dan-su-dung/](huong-dan-su-dung/README.md)**
 
-Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi tiết) · [UPGRADE_V10.md](UPGRADE_V10.md) (LMS, phụ huynh) · [UPGRADE_V11.md](UPGRADE_V11.md) (trường, Cloud, thi đua, Zalo/SMS) · [UPGRADE_V12.md](UPGRADE_V12.md) (Google/Facebook, học sinh tự đăng ký) · [tests/README.md](tests/README.md)
+Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi tiết) · [UPGRADE_V10.md](UPGRADE_V10.md) (LMS, phụ huynh) · [UPGRADE_V11.md](UPGRADE_V11.md) (trường, Cloud, thi đua, Zalo/SMS) · [UPGRADE_V12.md](UPGRADE_V12.md) (đăng nhập Google, học sinh tự đăng ký) · [tests/README.md](tests/README.md)
 
 ---
 
@@ -79,12 +79,13 @@ ars-server/
 │   ├── migrate_004_*.sql         Nhiều giáo viên (quản trị, khoá), kiểu kết nối lớp
 │   ├── migrate_005_lms.sql       Trường, kho đề, media câu hỏi, ghép Remote ↔ học sinh, bài tập về nhà, phụ huynh
 │   ├── migrate_006_*.sql         Admin trường/lớp hành chính, đồng bộ Cloud, thi đua đổi quà, thông báo Zalo/SMS
-│   ├── migrate_007_oauth.sql     Đăng nhập Google / Facebook
+│   ├── migrate_007_oauth.sql     Đăng nhập Google (bản cũ có cả Facebook)
 │   ├── migrate_008_*.sql         Học sinh tự đăng ký chưa cần lớp
 │   ├── migrate_009_language.sql  Ngôn ngữ giao diện theo tài khoản (vi / en)
 │   ├── migrate_010_tutor_chats.sql  Trợ lý AI: nhiều cuộc trò chuyện, đánh giá 👍/👎
 │   ├── migrate_011_set_finalize.sql Bộ câu hỏi: trạng thái Đang soạn / Đã hoàn tất
-│   └── migrate_012_nrf_only.sql     Chỉ dùng phần cứng nRF52840 (mọi lớp kết nối Bluetooth)
+│   ├── migrate_012_nrf_only.sql     Chỉ dùng phần cứng nRF52840 (mọi lớp kết nối Bluetooth)
+│   └── migrate_013_no_facebook.sql  Bỏ đăng nhập Facebook (xoá liên kết + cấu hình Facebook cũ)
 │
 ├── deploy/                       Cài đặt & vận hành trên Ubuntu
 │   ├── install_ubuntu.sh         Cài một lệnh: Apache+PHP, MariaDB, Mosquitto, Python libs, chép code vào /opt/ars-server
@@ -100,7 +101,7 @@ ars-server/
 ├── web/                          Ứng dụng web PHP (document root /ars)
 │   ├── index.php · register.php · forgot.php · logout.php     Đăng nhập / tạo tài khoản / quên mật khẩu giáo viên
 │   ├── portal.php · go.php · privacy.php                       Trang chọn vai trò, link ngắn /gv /hs, chính sách quyền riêng tư
-│   ├── oauth.php                 Đăng nhập / đăng ký / liên kết bằng Google hoặc Facebook (cả 3 vai trò)
+│   ├── oauth.php                 Đăng nhập / đăng ký / liên kết bằng Google (cả 3 vai trò)
 │   ├── dashboard.php             Tổng quan giáo viên
 │   ├── classes.php · class.php   Danh sách lớp; một lớp: học sinh, nhập Excel, mã tham gia, bắt đầu buổi, giao ôn tập
 │   ├── session.php               BẢNG ĐIỀU KHIỂN BUỔI HỌC (mở/đóng câu, lưới ghế cập nhật mỗi giây)
@@ -119,7 +120,7 @@ ars-server/
 │   ├── rewards.php               Thi đua: bảng xếp hạng, cửa hàng quà, duyệt quà
 │   ├── school.php · schools.php · teachers.php   Admin trường; quản trị trường; quản trị giáo viên
 │   ├── sync.php · notify.php     Đồng bộ lên Cloud; cấu hình & nhật ký Zalo/SMS
-│   ├── settings.php · practice_log.php           Cài đặt (AI, đường dẫn, kết nối clicker Bluetooth, Google/Facebook); lịch sử luyện tập HS
+│   ├── settings.php · practice_log.php           Cài đặt (AI, đường dẫn, kết nối clicker Bluetooth, đăng nhập Google); lịch sử luyện tập HS
 │   ├── api/
 │   │   ├── state.php             JSON trạng thái buổi học (bảng điều khiển & màn chiếu gọi mỗi giây)
 │   │   ├── action.php            Lệnh điều khiển: mở/đóng/chiếu câu, hiện kết quả, giải phóng ghế, kết thúc → tăng state_rev
@@ -336,7 +337,7 @@ Mở bảng điều khiển, bấm **Mở câu** — các ô chuyển xanh dần
 ## 6. Ngôn ngữ giao diện (Tiếng Việt / English)
 
 - Giáo viên và phụ huynh chọn **🇻🇳 VI / 🇬🇧 EN** ở thanh trên (hoặc màn đăng nhập). Lựa chọn lưu theo cookie và theo tài khoản (đăng nhập máy khác vẫn giữ). Lần đầu mở, trình duyệt đặt tiếng Anh sẽ thấy tiếng Anh. Cổng học sinh cũng có nút VI / EN.
-- Đã dịch: thanh trên, đăng nhập / đăng ký / quên mật khẩu, Tổng quan, Lớp học, trang lớp, bảng điều khiển + màn chiếu (cả JavaScript), Kết quả, cổng phụ huynh, Google/Facebook. Trang chưa dịch hiện tiếng Việt.
+- Đã dịch: thanh trên, đăng nhập / đăng ký / quên mật khẩu, Tổng quan, Lớp học, trang lớp, bảng điều khiển + màn chiếu (cả JavaScript), Kết quả, cổng phụ huynh, Google. Trang chưa dịch hiện tiếng Việt.
 - **Ngôn ngữ khác (Google Dịch):** cuối menu ngôn ngữ, dịch máy toàn bộ trang sang mọi ngôn ngữ Google Dịch hỗ trợ (danh sách lấy trực tiếp từ Google, luôn mới). Cần Internet; script Google chỉ tải khi người dùng chọn; nội dung trang (kể cả tên, điểm học sinh) được gửi tới Google — quản trị tắt được ở Cài đặt → Thông tin chung. Chữ cái đáp án, phím Remote, số ghế, tên ARS gắn `translate="no"`.
 - Thêm bản dịch: bọc chuỗi bằng `t('…')` / `te('…')` (PHP) hoặc `T('…')` (JS, trong control.js / projector.js); biến dạng `{n}`. `python3 tools/i18n_wrap.py keys web` liệt kê mọi khoá → thêm vào `web/lang/en.php`.
 - Dịch toàn trang: khi chọn tiếng Anh, `i18n_html()` lọc HTML trước khi gửi (chữ giữa các thẻ, placeholder/title, confirm) và `assets/i18n.js` dịch chữ do JavaScript chèn vào — cùng từ điển `web/lang/en.php`, số trong câu viết `{n}`. Tìm chữ còn sót: `KEEP=1 bash tests/run_local.sh` rồi `python3 tools/i18n_collect.py /tmp/ars-test.XXXX/smoke.json` (thêm `EN=1` để xem chữ Việt còn sót trên giao diện tiếng Anh).

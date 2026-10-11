@@ -80,7 +80,7 @@ if ($act === 'reset_pw') {
     $code = (string)qv('SELECT student_code FROM students WHERE class_id=? AND seat_no=?', [$cid, (int)$_POST['seat_no']]);
     if ($code !== '') {
         q('DELETE FROM student_users WHERE student_code=?', [$code]);
-        q('DELETE FROM oauth_identities WHERE user_type="student" AND user_key=?', [$code]);   // thu hồi cả đăng nhập Google/Facebook đã gắn
+        q('DELETE FROM oauth_identities WHERE user_type="student" AND user_key=?', [$code]);   // thu hồi cả đăng nhập Google đã gắn
         flash(t('Đã đặt lại mật khẩu của {c} về mặc định (= MSSV).', ['c' => $code])); }
     redirect("class.php?id=$cid");
 }

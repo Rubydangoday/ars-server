@@ -32,7 +32,7 @@ Remote nRF52840 ──BLE──▶ bridge/ble_scan.py ──MQTT──▶ ingest
 Ba nguyên tắc thiết kế (đừng phá):
 1. **Remote và bộ thu không quyết định gì.** Mọi luật (gói hợp lệ, trùng, trễ, sai ghế…) nằm ở `ingest/ingest.py`. Firmware chỉ phát gói, bộ thu chỉ chuyển gói.
 2. **Web không nói MQTT.** PHP chỉ ghi DB rồi tăng `sessions.state_rev`. Ingest thấy `state_rev` đổi thì soạn lại trạng thái và phát xuống Remote trong ≤ 0,3 s.
-3. **Chạy offline được.** Mọi thứ chạy trên một laptop, không cần Internet. Thư viện JS (KaTeX, mqtt.js, qrcode) nằm sẵn trong `web/assets/vendor/`. Chỉ AI, Google/Facebook, Zalo/SMS, Cloud và Google Dịch cần mạng.
+3. **Chạy offline được.** Mọi thứ chạy trên một laptop, không cần Internet. Thư viện JS (KaTeX, mqtt.js, qrcode) nằm sẵn trong `web/assets/vendor/`. Chỉ AI, Google, Zalo/SMS, Cloud và Google Dịch cần mạng.
 
 ## 2. Công nghệ
 
@@ -190,7 +190,7 @@ Kết quả mong đợi: mỗi bộ in số kiểm tra đạt, dòng cuối **`C
 | `ingest_integration.py` | Luật nhận gói của ingest, ACK/NACK chính xác, nhiều ghế cùng lúc, hạn ACK từng ghế, giải mã gói BLE |
 | `ble_scan_unit.py` | `ble_scan.Advertiser` với D-Bus giả: gộp ACK, giới hạn dừng quét, ưu tiên ACK |
 | `extended_integration.py`, `v11_integration.py` | Bài tập, phụ huynh, trường, Cloud, thi đua, Zalo/SMS (giả lập) |
-| `oauth_integration.py`, `student_signup_integration.py` | Google/Facebook, học sinh tự đăng ký |
+| `oauth_integration.py`, `student_signup_integration.py` | Đăng nhập Google, học sinh tự đăng ký |
 | `i18n_integration.py` | Giao diện tiếng Anh không sót tiếng Việt ở các trang chính |
 | `tutor_integration.py` | Trợ lý học sinh |
 

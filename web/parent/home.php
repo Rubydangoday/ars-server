@@ -19,7 +19,7 @@ $link_form = '<form method="post" class="p-link">' . csrf_field() . '<input name
 // ======================================================== TÀI KHOẢN
 if ($tab === 'account') {
     $pp = q1('SELECT phone,notify_channel,username FROM parents WHERE id=?', [$p['id']]); $chs = notify_channels();
-    echo '<div class="page-head"><div><h1>' . te('Tài khoản') . '</h1><p class="muted">' . te('Liên kết thêm con, nhận thông báo kết quả, đăng nhập bằng Google / Facebook.') . '</p></div></div><div class="p-acc">';
+    echo '<div class="page-head"><div><h1>' . te('Tài khoản') . '</h1><p class="muted">' . te('Liên kết thêm con, nhận thông báo kết quả, đăng nhập bằng Google.') . '</p></div></div><div class="p-acc">';
     echo '<section class="card">' . ui_card_head('👪 ' . te('Con đã liên kết'), t('Mỗi mã mời dùng cho một học sinh trong một lớp.'));
     foreach ($children as $c) echo '<div class="p-acc-child"><span class="p-ava">' . h(mb_strtoupper(mb_substr($first($c['full_name']), 0, 1))) . '</span><div><b>' . h($c['full_name']) . '</b><small>' . h($c['class_name']) . ' · ' . h($c['student_code']) . '</small></div></div>';
     if (!$children) echo '<p class="muted">' . te('Chưa liên kết học sinh nào.') . '</p>';

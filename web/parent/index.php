@@ -25,7 +25,7 @@ if($tab==='login'){
  echo '<form method="post" class="stack">'.csrf_field().'<label>'.te('Tên đăng nhập').'<input name="username" autocomplete="username" required placeholder="'.te('Tên đăng nhập của bạn').'"></label><label>'.te('Mật khẩu').'<input type="password" name="password" autocomplete="current-password" required placeholder="••••••••"></label><button class="primary" name="action" value="login">'.te('Đăng nhập').'</button></form>';
  echo '<p class="auth-links"><a href="index.php?tab=register">'.te('Chưa có tài khoản? Đăng ký').'</a><span class="muted small">'.te('Quên mật khẩu: nhờ thầy cô cấp mã mời mới').'</span></p>';
 }else{
- // Một form: nút "Tạo tài khoản" đứng trước trong DOM (phím Enter), nút Google/Facebook gửi sang ../oauth.php bằng formaction.
+ // Một form: nút "Tạo tài khoản" đứng trước trong DOM (phím Enter), nút Google gửi sang ../oauth.php bằng formaction.
  if($pending)echo oauth_pending_banner($pending,'../');   // ngoài form đăng ký: form "Huỷ" không được lồng
  echo '<form method="post" class="stack reg-form">'.csrf_field().'<input type="hidden" name="for" value="parent"><input type="hidden" name="mode" value="register">'
    .'<label style="order:0">'.te('Mã mời').'<input name="invite" value="'.h($_POST['invite']??$_GET['invite']??'').'" required autocomplete="off" placeholder="'.te('VD: K7PM-3QXA').'"></label>'

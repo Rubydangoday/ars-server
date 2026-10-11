@@ -1,5 +1,5 @@
 """python3 tests/oauth_integration.py /tmp/ars-smoke.json
-Kiểm thử đăng nhập Google / Facebook (v12) với nhà cung cấp giả lập localhost:8094 — không gọi Google/Facebook thật.
+Kiểm thử đăng nhập Google (v12; Facebook đã bỏ) với nhà cung cấp giả lập localhost:8094 — không gọi Google thật.
 Chạy SAU http_smoke.py, CSDL thử nghiệm đã có migration 007. Config thử nghiệm cần:
   [oauth_endpoints]
   google_auth = http://127.0.0.1:8094/google/auth
@@ -109,6 +109,7 @@ try:
     t1 = login(f'{p}_1')
     post(t1, 'settings.php', {'action': 'oauth', 'google_id': SECRETS['google'][0], 'google_secret': SECRETS['google'][1],
                               'facebook_id': SECRETS['facebook'][0], 'facebook_secret': SECRETS['facebook'][1]})
+    expect(sql1('SELECT COUNT(*) n FROM settings WHERE k LIKE "oauth_facebook%%"')['n'] == 0, 'Facebook removed: settings no longer stores Facebook App ID / secret')
     r = t1.get(BASE + 'settings.php'); noerr(r, 'settings')
     expect('/oauth.php' in r.text and 'g-secret' not in r.text and 'fb-secret' not in r.text, 'Settings show redirect URI, hide secrets')
     t2 = login(f'{p}_2')
@@ -117,7 +118,9 @@ try:
                               'facebook_id': SECRETS['facebook'][0], 'facebook_secret': '••••••••'})
     expect(sql1('SELECT v FROM settings WHERE k="oauth_google_secret"')['v'] == 'g-secret', 'Masked secret field keeps old secret')
     for page in ['index.php', 'student/index.php', 'parent/index.php', 'parent/index.php?tab=register']:
-        b = BeautifulSoup(requests.get(BASE + page).text, 'html.parser').select_one('button.oauth-google'); expect(b is not None and not b.has_attr('disabled'), 'Enabled button on ' + page)
+        soup_ = BeautifulSoup(requests.get(BASE + page).text, 'html.parser'); b = soup_.select_one('button.oauth-google')
+        expect(b is not None and not b.has_attr('disabled'), 'Enabled button on ' + page)
+        expect(soup_.select_one('button.oauth-facebook') is None and 'Facebook' not in soup_.get_text(), 'No Facebook button on ' + page)
 
     # ---- giáo viên
     anon = requests.Session(); NEXT['google'] = g('g-teacher-1')
@@ -150,13 +153,18 @@ try:
     NEXT['deny'] = True; r = oauth(requests.Session(), 'index.php', 'google', {}); expect('huỷ' in flash(r), 'User cancel handled'); NEXT['deny'] = False
     expect(requests.post(BASE + 'oauth.php', data={'action': 'start', 'provider': 'google', 'for': 'teacher', 'mode': 'login'}).status_code == 400, 'CSRF required to start')
 
-    # ---- học sinh: Facebook (appsecret_proof)
+    # ---- Facebook đã bỏ: không bắt đầu được luồng Facebook
+    s = requests.Session(); s.get(BASE + 'index.php')
+    expect(s.post(BASE + 'oauth.php', data={'csrf': csrf(s, 'index.php'), 'action': 'start', 'provider': 'facebook', 'for': 'teacher', 'mode': 'login'}).status_code == 400,
+           'Facebook login flow is rejected (provider removed)')
+
+    # ---- học sinh: Google
     st = requests.Session(); st.post(BASE + 'student/index.php', data={'csrf': csrf(st, 'student/index.php'), 'code': d['code'], 'password': d['password']})
-    NEXT['facebook'] = fb('fb-student-1', 'HS Facebook')
-    r = oauth(st, 'student/account.php', 'facebook', {}); expect('Đã liên kết Facebook' in flash(r), 'Student links Facebook')
-    s = requests.Session(); r = oauth(s, 'student/index.php', 'facebook', {}); expect(r.url.endswith('student/home.php') and 'Học sinh kiểm thử' in r.text, 'Student logs in with Facebook')
-    r = post(st, 'oauth.php', {'action': 'unlink', 'provider': 'facebook', 'for': 'student'}, page='student/account.php'); expect('Đã gỡ' in flash(r), 'Student unlinks')
-    r = oauth(requests.Session(), 'student/index.php', 'facebook', {}); expect(r.url.endswith('student/register.php') and 'home.php' not in r.url, 'Unlinked Facebook no longer logs in (goes to sign-up)')
+    NEXT['google'] = g('g-student-1', 'hs@example.com', 'HS Google')
+    r = oauth(st, 'student/account.php', 'google', {}); expect('Đã liên kết Google' in flash(r), 'Student links Google')
+    s = requests.Session(); r = oauth(s, 'student/index.php', 'google', {}); expect(r.url.endswith('student/home.php') and 'Học sinh kiểm thử' in r.text, 'Student logs in with Google')
+    r = post(st, 'oauth.php', {'action': 'unlink', 'provider': 'google', 'for': 'student'}, page='student/account.php'); expect('Đã gỡ' in flash(r), 'Student unlinks')
+    r = oauth(requests.Session(), 'student/index.php', 'google', {}); expect(r.url.endswith('student/register.php') and 'home.php' not in r.url, 'Unlinked Google no longer logs in (goes to sign-up)')
     expect(sql1('SELECT COUNT(*) n FROM oauth_identities WHERE user_type="student"')['n'] == 0, 'Unlink removed identity')
 
     # ---- phụ huynh: đăng ký bằng Google + mã mời

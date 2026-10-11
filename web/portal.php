@@ -143,7 +143,7 @@ page_head(t('ARS — Lớp học tương tác bằng Remote'), '', true);
   <div class="lp-ft-text reveal"><span class="lp-eyebrow">👪 <?= te('Cho phụ huynh') ?></span><h2><?= te('Biết con học thế nào chỉ trong một phút') ?></h2>
     <ul class="lp-list"><?= $feat('📈', 'Tiến độ theo ngày / tuần', 'Điểm bấm Remote, chuyên cần, bài tập, nhận xét của thầy cô.') ?>
       <?= $feat('📨', 'Tin Zalo / SMS sau mỗi buổi', '“Hôm nay cháu trả lời đúng 8/10 câu bằng Remote.” Phụ huynh tự đăng ký nhận tin.') ?>
-      <?= $feat('🔑', 'Đăng nhập bằng Google / Facebook', 'Liên kết đúng con bằng mã mời riêng của thầy cô.') ?></ul></div>
+      <?= $feat('🔑', 'Đăng nhập bằng Google', 'Liên kết đúng con bằng mã mời riêng của thầy cô.') ?></ul></div>
   <div class="lp-ft-art reveal" aria-hidden="true"><div class="mock-phone parent"><div class="ph-top"></div>
     <div class="ph-msg">📨 <b>ARS</b><br><?= te('Hôm nay cháu Minh Anh trả lời đúng 8/10 câu bằng Remote trên lớp Toán.') ?></div>
     <div class="ph-kpis"><span><b>92%</b><?= te('chuyên cần') ?></span><span><b>8.4</b><?= te('điểm TB') ?></span></div>
@@ -198,7 +198,7 @@ page_head(t('ARS — Lớp học tương tác bằng Remote'), '', true);
   <div class="lp-faq">
     <?php foreach ([['Học sinh có cần điện thoại không?', 'Không. Trên lớp học sinh chỉ dùng Remote. Ở nhà, học sinh và phụ huynh dùng điện thoại hoặc máy tính để làm bài tập, ôn câu sai và xem tiến độ.'],
                     ['Mất Internet có dạy được không?', 'Được. Máy chủ ARS chạy trên laptop giáo viên, Remote gửi thẳng tới Bluetooth của laptop, không cần mạng Wi-Fi. Khi có mạng, bấm “Sync to Cloud” để đẩy kết quả lên.'],
-                    ['Học sinh vào lớp thế nào?', 'Mở cổng học sinh, tạo tài khoản bằng mã học sinh (hoặc Google / Facebook) và nhập mã tham gia lớp giáo viên cho.'],
+                    ['Học sinh vào lớp thế nào?', 'Mở cổng học sinh, tạo tài khoản bằng mã học sinh (hoặc Google) và nhập mã tham gia lớp giáo viên cho.'],
                     ['Dữ liệu học sinh được lưu ở đâu?', 'Trên máy chủ của trường / giáo viên. Xem chi tiết trong Chính sách quyền riêng tư.'],
                     ['Giáo viên nước ngoài dùng được không?', 'Được. Chọn English ở góc trên — giao diện giáo viên và phụ huynh chuyển sang tiếng Anh.']] as [$q, $a]): ?>
       <details class="reveal"><summary><?= te($q) ?></summary><p><?= te($a) ?></p></details>

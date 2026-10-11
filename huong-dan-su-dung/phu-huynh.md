@@ -20,7 +20,7 @@ Thầy cô gửi riêng cho bạn một **mã mời** cho từng con:
    - **Mật khẩu**: từ 10 ký tự trở lên.
 3. Bấm **Tạo tài khoản**. Tài khoản tự liên kết với con.
 
-Nếu nhà trường đã bật, bạn có thể **đăng nhập bằng Google / Facebook** thay cho mật khẩu (vẫn cần mã mời ở lần đầu).
+Nếu nhà trường đã bật, bạn có thể **đăng nhập bằng Google** thay cho mật khẩu (vẫn cần mã mời ở lần đầu).
 
 **Có nhiều con hoặc con học nhiều lớp:** đăng nhập, vào tab **Liên kết**, nhập thêm mã mời ở mục **Liên kết thêm con / lớp**.
 

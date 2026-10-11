@@ -66,6 +66,7 @@ mysql ars < "$DST/db/migrate_009_language.sql"
 mysql ars < "$DST/db/migrate_010_tutor_chats.sql"
 mysql ars < "$DST/db/migrate_011_set_finalize.sql"
 mysql ars < "$DST/db/migrate_012_nrf_only.sql"
+mysql ars < "$DST/db/migrate_013_no_facebook.sql"
 
 # thư mục lưu file bài giảng (ngoài /opt để cập nhật mã không xoá mất)
 UPL=/var/lib/ars/uploads

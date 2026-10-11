@@ -1,5 +1,5 @@
 <?php
-// Đăng nhập / liên kết / đăng ký (phụ huynh) bằng Google hoặc Facebook.
+// Đăng nhập / liên kết / đăng ký (phụ huynh) bằng Google.
 //   POST action=start   → chuyển sang trang đăng nhập của nhà cung cấp
 //   GET  ?code&state    → nhà cung cấp gọi lại (Redirect URI)
 //   POST action=unlink  → gỡ liên kết khỏi tài khoản đang đăng nhập
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($act === 'cancel') { oauth_pending_clear(); redirect(OAUTH_LOGIN[$for]); }
     if ($act === 'confirm_link' || $act === 'skip_link') {
-        // Sau khi đăng nhập bằng mật khẩu: người dùng xác nhận gắn tài khoản Google/Facebook vừa bấm vào tài khoản này.
+        // Sau khi đăng nhập bằng mật khẩu: người dùng xác nhận gắn tài khoản Google vừa bấm vào tài khoản này.
         $key = current_key($for);
         if ($key === null) redirect(OAUTH_LOGIN[$for]);
         if ($act === 'confirm_link') {
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($mode === 'link') {
             if (($extra['key'] = current_key($for)) === null) redirect(OAUTH_LOGIN[$for]);
         } elseif ($mode === 'register' && $for === 'parent' && trim((string)($_POST['invite'] ?? '')) !== '') {
-            // Phụ huynh đã nhập sẵn mã mời: tạo tài khoản ngay khi Google/Facebook gọi lại
+            // Phụ huynh đã nhập sẵn mã mời: tạo tài khoản ngay khi Google gọi lại
             $tok = trim((string)$_POST['invite']);
             parent_invite_hash($tok);                                 // kiểm tra dạng mã (8 ký tự) + chống dò
             $extra['invite'] = $tok;
@@ -111,7 +111,7 @@ if ($flow['mode'] === 'link') {
 
 $o = oauth_identity($p, $prof['subject'], $for);
 if ($flow['mode'] === 'register' && !empty($flow['invite'])) {
-    // Phụ huynh đăng ký bằng Google/Facebook + mã mời. Đã có tài khoản liên kết → chỉ thêm con/lớp.
+    // Phụ huynh đăng ký bằng Google + mã mời. Đã có tài khoản liên kết → chỉ thêm con/lớp.
     try {
         db()->beginTransaction();
         $i = take_invite($flow['invite']);
@@ -138,7 +138,7 @@ if ($o) {
     login_as($for, $o['user_key']);
     q('DELETE FROM oauth_identities WHERE provider=? AND subject=? AND user_type=?', [$p, $prof['subject'], $for]);   // tài khoản ARS đã bị xoá
 }
-// Chưa có tài khoản ARS: giữ hồ sơ Google/Facebook trong phiên và chuyển tới bước cuối của vai trò (không cần mật khẩu).
+// Chưa có tài khoản ARS: giữ hồ sơ Google trong phiên và chuyển tới bước cuối của vai trò (không cần mật khẩu).
 oauth_pending_set($for, $p, $prof);
 $who = $prof['email'] ?: ($prof['name'] ?: $name);
 if ($for === 'teacher' && setting('teacher_signup', 'invite') === 'closed') {
@@ -146,7 +146,7 @@ if ($for === 'teacher' && setting('teacher_signup', 'invite') === 'closed') {
     redirect('index.php');
 }
 if ($for === 'teacher' && setting('teacher_signup', 'invite') === 'open' && (int)qv('SELECT COUNT(*) FROM teachers') > 0) {
-    // Server cho đăng ký tự do: tạo tài khoản giáo viên ngay từ hồ sơ Google/Facebook (tên đăng nhập gợi ý từ email, mật khẩu ngẫu nhiên).
+    // Server cho đăng ký tự do: tạo tài khoản giáo viên ngay từ hồ sơ Google (tên đăng nhập gợi ý từ email, mật khẩu ngẫu nhiên).
     q('INSERT INTO teachers (username, full_name, password_hash) VALUES (?,?,?)',
       [oauth_username_suggest($prof['email'] ?? $prof['name'], 'teachers'), $prof['name'] ?: 'Giáo viên', password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT)]);
     $tid = (string)db()->lastInsertId();

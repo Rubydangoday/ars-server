@@ -1,5 +1,7 @@
 # ARS v12 — đăng nhập bằng Google / Facebook
 
+> **Cập nhật:** đăng nhập bằng **Facebook đã bị bỏ**, chỉ còn Google (`db/migrate_013_no_facebook.sql` xoá liên kết và cấu hình Facebook cũ). Phần Facebook dưới đây chỉ còn giá trị lịch sử.
+
 Dùng cho cả ba cổng: giáo viên, học sinh, phụ huynh. Mật khẩu ARS vẫn dùng song song.
 
 ## Nâng cấp

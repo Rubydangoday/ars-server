@@ -1,11 +1,11 @@
 <?php
-// Đăng nhập bằng Google / Facebook (OAuth 2.0 authorization code). Dùng cho cả giáo viên, học sinh, phụ huynh.
+// Đăng nhập bằng Google (OAuth 2.0 authorization code + PKCE). Dùng cho cả giáo viên, học sinh, phụ huynh.
 // Không tự ghép tài khoản theo email: người dùng đăng nhập bằng mật khẩu một lần rồi bấm "Liên kết",
 // hoặc phụ huynh đăng ký mới kèm mã mời. Nhận diện bằng mã người dùng (sub / id) của nhà cung cấp.
 declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 
-const OAUTH_PROVIDERS = ['google' => 'Google', 'facebook' => 'Facebook'];
+const OAUTH_PROVIDERS = ['google' => 'Google'];   // Facebook đã bỏ (v12 có, nay chỉ Google)
 const OAUTH_TYPES = ['teacher', 'student', 'parent'];
 const OAUTH_FLOW_TTL = 600;     // giây từ lúc bấm nút tới khi quay lại
 
@@ -14,37 +14,33 @@ function oauth_endpoint(string $provider, string $k): string {
     $def = [
         'google' => ['auth' => 'https://accounts.google.com/o/oauth2/v2/auth', 'token' => 'https://oauth2.googleapis.com/token',
                      'userinfo' => 'https://openidconnect.googleapis.com/v1/userinfo'],
-        'facebook' => ['auth' => 'https://www.facebook.com/v21.0/dialog/oauth', 'token' => 'https://graph.facebook.com/v21.0/oauth/access_token',
-                       'userinfo' => 'https://graph.facebook.com/v21.0/me'],
     ];
     return cfg()['oauth_endpoints'][$provider . '_' . $k] ?? $def[$provider][$k];
 }
 function oauth_client(string $p): array {
     return ['id' => (string)setting('oauth_' . $p . '_id', ''), 'secret' => (string)setting('oauth_' . $p . '_secret', '')];
 }
-/** Nhà cung cấp đã cấu hình. Google/Facebook chỉ chấp nhận https (trừ localhost) nên ẩn nút khi truy cập bằng http qua IP LAN. */
+/** Nhà cung cấp đã cấu hình. Google chỉ chấp nhận https (trừ localhost) nên ẩn nút khi truy cập bằng http qua IP LAN. */
 function oauth_enabled(): array {
     return array_filter(OAUTH_PROVIDERS, fn($n, $p) => oauth_status($p) === '', ARRAY_FILTER_USE_BOTH);
 }
 /** '' = dùng được; ngược lại là lý do hiển thị dưới nút bị mờ. */
 function oauth_status(string $p): string {
-    if (oauth_client($p)['id'] === '' || oauth_client($p)['secret'] === '') return t('Quản trị server chưa bật (Cài đặt → 🔐 Google / Facebook).');
+    if (oauth_client($p)['id'] === '' || oauth_client($p)['secret'] === '') return t('Quản trị server chưa bật (Cài đặt → 🔐 Đăng nhập Google).');
     $host = strtolower(preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? ''));
     if (!is_https() && !in_array($host, ['localhost', '127.0.0.1'], true) && empty(cfg()['oauth_endpoints']))
-        return t('Google/Facebook chỉ cho đăng nhập qua link https') . (setting('public_url') ? ': ' . setting('public_url') . web_root_path() . '/' : ' ' . t('(bật link Internet: sudo ars public on).'));
+        return t('Google chỉ cho đăng nhập qua link https') . (setting('public_url') ? ': ' . setting('public_url') . web_root_path() . '/' : ' ' . t('(bật link Internet: sudo ars public on).'));
     return '';
 }
 /** Logo chính thức dạng SVG (không tải từ Internet). */
 function oauth_logo(string $p): string {
-    return $p === 'google'
-        ? '<svg class="oauth-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>'
-        : '<svg class="oauth-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.5c-1.5 0-1.96.93-1.96 1.89v2.26h3.32l-.53 3.5h-2.8V24C19.62 23.1 24 18.1 24 12.07"/></svg>';
+    return '<svg class="oauth-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 }
 /** Đường dẫn gốc thư mục web (VD "/ars" khi Apache đặt alias), suy ra từ trang đang chạy. */
 function web_root_path(): string {
     return preg_replace('#/(student/|parent/|api/)?[^/]*$#', '', $_SERVER['SCRIPT_NAME'] ?? '/');
 }
-/** Redirect URI phải trùng từng ký tự với địa chỉ đã khai báo trong Google Cloud Console / Facebook Developers. */
+/** Redirect URI phải trùng từng ký tự với địa chỉ đã khai báo trong Google Cloud Console. */
 function oauth_redirect_uri(): string { return current_base() . web_root_path() . '/oauth.php'; }
 
 function oauth_http(string $url, ?array $form = null, array $headers = []): array {
@@ -68,9 +64,8 @@ function oauth_start(string $provider, string $for, string $mode, array $extra =
     $_SESSION['oauth_flow'] = ['state' => $state, 'provider' => $provider, 'for' => $for, 'mode' => $mode, 'verifier' => $verifier, 'at' => time()] + $extra;
     $c = oauth_client($provider);
     $q = ['client_id' => $c['id'], 'redirect_uri' => oauth_redirect_uri(), 'response_type' => 'code', 'state' => $state];
-    if ($provider === 'google') $q += ['scope' => 'openid email profile', 'prompt' => 'select_account',
+    $q += ['scope' => 'openid email profile', 'prompt' => 'select_account',
         'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '='), 'code_challenge_method' => 'S256'];
-    else $q += ['scope' => 'public_profile,email'];
     return oauth_endpoint($provider, 'auth') . '?' . http_build_query($q);
 }
 
@@ -84,18 +79,11 @@ function oauth_finish(array $get): array {
     $code = (string)($get['code'] ?? '');
     if ($code === '' || strlen($code) > 2048) throw new RuntimeException('Thiếu mã đăng nhập.');
     $p = $flow['provider']; $c = oauth_client($p);
-    if ($p === 'google') {
-        $tok = oauth_http(oauth_endpoint($p, 'token'), ['code' => $code, 'client_id' => $c['id'], 'client_secret' => $c['secret'],
-            'redirect_uri' => oauth_redirect_uri(), 'grant_type' => 'authorization_code', 'code_verifier' => $flow['verifier']]);
-        $u = oauth_http(oauth_endpoint($p, 'userinfo'), null, ['Authorization: Bearer ' . ($tok['access_token'] ?? '')]);
-        $prof = ['subject' => (string)($u['sub'] ?? ''), 'email' => !empty($u['email_verified']) ? ($u['email'] ?? null) : null, 'name' => $u['name'] ?? null];
-    } else {
-        $tok = oauth_http(oauth_endpoint($p, 'token'), ['code' => $code, 'client_id' => $c['id'], 'client_secret' => $c['secret'], 'redirect_uri' => oauth_redirect_uri()]);
-        $at = (string)($tok['access_token'] ?? '');
-        $u = oauth_http(oauth_endpoint($p, 'userinfo') . '?' . http_build_query(['fields' => 'id,name,email', 'access_token' => $at,
-            'appsecret_proof' => hash_hmac('sha256', $at, $c['secret'])]));
-        $prof = ['subject' => (string)($u['id'] ?? ''), 'email' => $u['email'] ?? null, 'name' => $u['name'] ?? null];
-    }
+    if (!isset(OAUTH_PROVIDERS[$p])) throw new RuntimeException('Nhà cung cấp đăng nhập không còn được hỗ trợ.');
+    $tok = oauth_http(oauth_endpoint($p, 'token'), ['code' => $code, 'client_id' => $c['id'], 'client_secret' => $c['secret'],
+        'redirect_uri' => oauth_redirect_uri(), 'grant_type' => 'authorization_code', 'code_verifier' => $flow['verifier']]);
+    $u = oauth_http(oauth_endpoint($p, 'userinfo'), null, ['Authorization: Bearer ' . ($tok['access_token'] ?? '')]);
+    $prof = ['subject' => (string)($u['sub'] ?? ''), 'email' => !empty($u['email_verified']) ? ($u['email'] ?? null) : null, 'name' => $u['name'] ?? null];
     if (!preg_match('/^[A-Za-z0-9_-]{1,100}$/', $prof['subject'])) throw new RuntimeException('Không đọc được tài khoản từ nhà cung cấp.');
     $prof['email'] = $prof['email'] !== null ? mb_substr((string)$prof['email'], 0, 255) : null;
     $prof['name'] = $prof['name'] !== null ? mb_substr(trim((string)$prof['name']), 0, 100) : null;
@@ -125,7 +113,7 @@ function oauth_button(string $p, string $for, string $mode, string $root, string
     $why = oauth_status($p);
     return $html . '<button class="oauth-btn oauth-' . $p . '"' . ($why ? ' disabled title="' . h($why) . '"' : '') . '>' . oauth_logo($p) . '<span>' . h(t($label) . ' ' . OAUTH_PROVIDERS[$p]) . '</span></button></form>';
 }
-/** Các nút "Đăng nhập với Google / Facebook". $always: hiện cả nút chưa dùng được (mờ + lý do) để người dùng biết có tính năng. */
+/** Nút "Đăng nhập với Google". $always: hiện cả nút chưa dùng được (mờ + lý do) để người dùng biết có tính năng. */
 function oauth_buttons(string $for, string $mode, string $root = '', string $label = 'Đăng nhập với', array $hidden = [], bool $always = false): string {
     $html = ''; $why = [];
     foreach (OAUTH_PROVIDERS as $p => $name) {
@@ -136,20 +124,20 @@ function oauth_buttons(string $for, string $mode, string $root = '', string $lab
     if (!$html) return '';
     return '<div class="oauth">' . $html . ($why ? '<p class="oauth-note">ⓘ ' . implode('<br>ⓘ ', array_map(fn($s, $who) => h(implode(', ', $who) . ': ' . $s), array_keys($why), $why)) . '</p>' : '') . '</div>';
 }
-/** Khối "Đăng nhập bằng Google / Facebook" trong trang tài khoản: liên kết / gỡ liên kết. */
+/** Khối "Đăng nhập bằng Google" trong trang tài khoản: liên kết / gỡ liên kết. */
 function oauth_manage_html(string $for, string $key, string $root = ''): string {
     $links = oauth_links($for, $key); $on = oauth_enabled();
     if (!$on && !$links) return '';
-    $html = '<div class="oauth-manage"><h3>' . te('Đăng nhập bằng Google / Facebook') . '</h3>';
+    $html = '<div class="oauth-manage"><h3>' . te('Đăng nhập bằng Google') . '</h3>';
     foreach (OAUTH_PROVIDERS as $p => $name) {
         if (isset($links[$p])) $html .= '<form method="post" action="' . h($root) . 'oauth.php" class="row">' . csrf_field() . '<input type="hidden" name="action" value="unlink"><input type="hidden" name="provider" value="' . $p . '"><input type="hidden" name="for" value="' . $for . '">'
             . '<span>✅ ' . $name . ': ' . h($links[$p]['email'] ?? $links[$p]['name'] ?? t('đã liên kết')) . '</span><button class="small" onclick="return confirm(' . h(json_encode(t('Gỡ liên kết {p}?', ['p' => $name]), JSON_UNESCAPED_UNICODE)) . ')">' . te('Gỡ liên kết') . '</button></form>';
         elseif (isset($on[$p])) $html .= oauth_button($p, $for, 'link', $root, 'Liên kết');
     }
-    return $html . '<p class="muted small">' . te('Sau khi liên kết, bấm nút Google / Facebook ở màn hình đăng nhập để vào thẳng. Mật khẩu ARS vẫn dùng được.') . '</p></div>';
+    return $html . '<p class="muted small">' . te('Sau khi liên kết, bấm nút Google ở màn hình đăng nhập để vào thẳng. Mật khẩu ARS vẫn dùng được.') . '</p></div>';
 }
 
-// ------------------------------------------------------------------ đăng ký nhanh: tài khoản Google/Facebook "đang chờ"
+// ------------------------------------------------------------------ đăng ký nhanh: tài khoản Google "đang chờ"
 // Bấm "Đăng nhập với Google" mà chưa có tài khoản ARS → lưu hồ sơ vào phiên (15 phút) và chuyển tới bước cuối của vai trò:
 // giáo viên (mã mời nếu server yêu cầu), học sinh (mã lớp / mã học sinh), phụ huynh (mã mời của con). Không cần mật khẩu.
 // Nếu người đó đã có tài khoản và đăng nhập bằng mật khẩu, ARS hỏi xác nhận trước khi liên kết (an toàn cho máy dùng chung).

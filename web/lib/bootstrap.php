@@ -130,12 +130,12 @@ function apply_user_lang(?string $l): void { if ($l) set_lang($l); }
 function flash(string $msg, string $kind = 'ok'): void { $_SESSION['flash'][] = [$kind, $msg]; }
 /** Hiệu ứng chạy một lần ở trang kế tiếp (assets/fx.js): celebrate | correct | wrong | success. */
 function fx_once(string $name): void { $_SESSION['fx'] = $name; }
-/** Sau khi đăng nhập bằng mật khẩu: hỏi có liên kết tài khoản Google/Facebook vừa bấm (lib/oauth.php lưu trong phiên) không.
+/** Sau khi đăng nhập bằng mật khẩu: hỏi có liên kết tài khoản Google vừa bấm (lib/oauth.php lưu trong phiên) không.
  *  Không tự liên kết: trên máy dùng chung, Google của người trước không được gắn nhầm vào tài khoản người sau. */
 function oauth_pending_prompt(string $for, string $root): string {
     $p = $_SESSION['oauth_pending'] ?? null;
     if (!$p || $p['for'] !== $for || time() - $p['at'] > 900) return '';
-    $name = ['google' => 'Google', 'facebook' => 'Facebook'][$p['provider']] ?? '';
+    $name = ['google' => 'Google'][$p['provider']] ?? '';
     $btn = fn($act, $label, $cls) => '<form method="post" action="' . h($root) . 'oauth.php" style="display:inline">' . csrf_field() . '<input type="hidden" name="action" value="' . $act . '">'
         . '<input type="hidden" name="provider" value="' . h($p['provider']) . '"><input type="hidden" name="for" value="' . $for . '"><button class="' . $cls . '">' . $label . '</button></form>';
     return '<div class="flash warn oauth-confirm"><b>' . te('Liên kết {p} {e} với tài khoản này?', ['p' => $name, 'e' => $p['email'] ?? $p['name'] ?? '']) . '</b> '

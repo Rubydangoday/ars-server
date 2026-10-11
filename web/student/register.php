@@ -1,5 +1,5 @@
 <?php
-// Đăng ký tài khoản học sinh: MSSV + họ tên + mật khẩu (hoặc Google/Facebook). Mã tham gia lớp không bắt buộc:
+// Đăng ký tài khoản học sinh: MSSV + họ tên + mật khẩu (hoặc Google). Mã tham gia lớp không bắt buộc:
 // chưa có lớp thì tạo tài khoản trước, vào lớp sau ở trang Tổng quan bằng mã giáo viên cung cấp.
 require __DIR__ . '/../lib/student.php';
 require __DIR__ . '/../lib/oauth.php';

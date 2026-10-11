@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mode !== 'closed') {
     elseif (!$pending && mb_strlen($p) < 6) $err = 'Mật khẩu tối thiểu 6 ký tự.';
     elseif (!$pending && $p !== $p2) $err = 'Mật khẩu nhập lại không khớp.';
     elseif ($pending) {
-        // Mật khẩu ngẫu nhiên không ai biết: đăng nhập bằng Google/Facebook. Muốn có mật khẩu: Cài đặt → mã khôi phục → Quên mật khẩu.
+        // Mật khẩu ngẫu nhiên không ai biết: đăng nhập bằng Google. Muốn có mật khẩu: Cài đặt → mã khôi phục → Quên mật khẩu.
         q('INSERT INTO teachers (username, full_name, password_hash) VALUES (?,?,?)', [$u, mb_substr($name, 0, 100), password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT)]);
         $tid = (int)db()->lastInsertId();
         $n = oauth_attach_pending('teacher', (string)$tid);

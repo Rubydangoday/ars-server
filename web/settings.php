@@ -69,7 +69,7 @@ if ($act === 'oauth') {
         if (isset($_POST['clear_' . $p])) setting_set('oauth_' . $p . '_secret', null);
         elseif ($sec !== '' && !preg_match('/^•+/u', $sec)) setting_set('oauth_' . $p . '_secret', mb_substr($sec, 0, 300));
     }
-    flash('Đã lưu cài đặt đăng nhập Google / Facebook.');
+    flash('Đã lưu cài đặt đăng nhập Google.');
     redirect('settings.php#oauth');
 }
 if ($act === 'general') {
@@ -91,7 +91,7 @@ page_head('Cài đặt', 'settings.php');
 ?>
 <div class="page-head"><div><h1>⚙️ Cài đặt</h1><p class="muted">Đường dẫn truy cập, kết nối clicker, trợ lý AI, tài khoản.<?= $admin ? '' : ' Một số mục do giáo viên quản trị server cài đặt.' ?></p></div></div>
 <div class="settings-grid">
-  <nav class="settings-nav"><a href="#links">🔗 Đường dẫn</a><a href="#conn">🔵 Kết nối clicker</a><?php if ($admin): ?><a href="#ai">✨ Trợ lý AI</a><a href="#tutor">🦉 Trợ lý học sinh</a><?php endif; ?><a href="#account">👤 Tài khoản</a><?php if ($admin): ?><a href="#oauth">🔐 Google / Facebook</a><?php endif; ?><?php if ($admin): ?><a href="#general">🏫 Thông tin chung</a><a href="teachers.php">👥 Giáo viên</a><?php endif; ?><a href="#system">🖥 Hệ thống</a></nav>
+  <nav class="settings-nav"><a href="#links">🔗 Đường dẫn</a><a href="#conn">🔵 Kết nối clicker</a><?php if ($admin): ?><a href="#ai">✨ Trợ lý AI</a><a href="#tutor">🦉 Trợ lý học sinh</a><?php endif; ?><a href="#account">👤 Tài khoản</a><?php if ($admin): ?><a href="#oauth">🔐 Google</a><?php endif; ?><?php if ($admin): ?><a href="#general">🏫 Thông tin chung</a><a href="teachers.php">👥 Giáo viên</a><?php endif; ?><a href="#system">🖥 Hệ thống</a></nav>
   <div>
     <?php require __DIR__ . '/lib/settings_links.php'; ?>
     <?php if ($admin): ?>
@@ -179,8 +179,8 @@ page_head('Cài đặt', 'settings.php');
 
     <?php if ($admin): $osec = fn($p) => setting('oauth_' . $p . '_secret') ? str_repeat('•', 8) : ''; ?>
     <section class="card" id="oauth">
-      <h2>Đăng nhập bằng Google / Facebook</h2>
-      <p class="muted small">Cho giáo viên, học sinh, phụ huynh đăng nhập bằng tài khoản Google hoặc Facebook đã liên kết. Google/Facebook chỉ chấp nhận địa chỉ <b>https://</b> có tên miền (hoặc localhost): bật trên server Cloud / link công khai. Truy cập bằng http qua IP LAN sẽ không hiện nút.</p>
+      <h2>Đăng nhập bằng Google</h2>
+      <p class="muted small">Cho giáo viên, học sinh, phụ huynh đăng nhập bằng tài khoản Google đã liên kết. Google chỉ chấp nhận địa chỉ <b>https://</b> có tên miền (hoặc localhost): bật trên server Cloud / link công khai. Truy cập bằng http qua IP LAN sẽ không hiện nút.</p>
       <p class="small">Redirect URI cần khai báo (đúng từng ký tự):</p>
       <?= link_box(oauth_redirect_uri(), 'Địa chỉ đang mở', false) ?>
       <?php if ($pub = setting('public_url')): ?><?= link_box(rtrim($pub, '/') . web_root_path() . '/oauth.php', 'Link công khai', false) ?><?php endif; ?>
@@ -189,13 +189,9 @@ page_head('Cài đặt', 'settings.php');
         <label>Client ID <input name="google_id" value="<?= h(setting('oauth_google_id', '')) ?>" placeholder="…apps.googleusercontent.com"></label>
         <label>Client secret <input name="google_secret" autocomplete="off" value="<?= $osec('google') ?>"></label>
         <label class="check"><input type="checkbox" name="clear_google"> Xoá secret (tắt Google)</label>
-        <h3>Facebook <span class="muted small">— developers.facebook.com → App → Facebook Login → Valid OAuth Redirect URIs</span></h3>
-        <label>App ID <input name="facebook_id" value="<?= h(setting('oauth_facebook_id', '')) ?>"></label>
-        <label>App secret <input name="facebook_secret" autocomplete="off" value="<?= $osec('facebook') ?>"></label>
-        <label class="check"><input type="checkbox" name="clear_facebook"> Xoá secret (tắt Facebook)</label>
         <div><button class="primary">Lưu</button></div>
       </form>
-      <p class="muted small">Tài khoản không tự ghép theo email: mỗi người đăng nhập bằng mật khẩu một lần rồi bấm “Liên kết” trong trang tài khoản. Phụ huynh mới có thể đăng ký thẳng bằng Google/Facebook kèm mã mời.</p>
+      <p class="muted small">Tài khoản không tự ghép theo email: mỗi người đăng nhập bằng mật khẩu một lần rồi bấm “Liên kết” trong trang tài khoản. Phụ huynh mới có thể đăng ký thẳng bằng Google kèm mã mời.</p>
     </section>
     <?php endif; ?>
 

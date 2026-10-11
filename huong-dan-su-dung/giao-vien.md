@@ -26,7 +26,7 @@
 **Đăng nhập:** mở `http://ars.local/gv` (hoặc link quản trị viên gửi).
 - Lần đầu cài máy chủ: trang đăng nhập cho tạo **tài khoản quản trị**.
 - Giáo viên khác: bấm **Đăng ký**, nhập **mã mời giáo viên** do quản trị viên cấp.
-- Có thể đăng nhập bằng Google/Facebook nếu quản trị viên đã bật.
+- Có thể đăng nhập bằng Google nếu quản trị viên đã bật.
 - Quên mật khẩu: bấm **Quên mật khẩu**.
   - Nếu mở ngay trên laptop máy chủ, đặt lại được luôn.
   - Nếu mở từ máy khác, cần **mã khôi phục** (hiện khi tạo tài khoản, tạo lại được trong Cài đặt).
@@ -202,7 +202,7 @@ Phụ huynh quên mật khẩu: cấp **mã mời mới** cho em đó.
   - **Google Gemini** (có gói miễn phí): lấy API key ở Google AI Studio bằng **Gmail cá nhân**, dán vào ô key, bấm **Kiểm tra** rồi **Lưu**.
   - **Claude (Anthropic)** hoặc **OpenAI**: cần API key trả phí.
   - Sau khi lưu, ô key hiện "✓ Đã lưu key …abcd". Không dán mật khẩu đăng nhập vào ô key.
-- **Tài khoản**: đổi mật khẩu, ngôn ngữ, liên kết Google/Facebook.
+- **Tài khoản**: đổi mật khẩu, ngôn ngữ, liên kết Google.
 
 ---
 
@@ -212,7 +212,7 @@ Chỉ tài khoản **quản trị** thấy:
 - **Giáo viên**: tạo mã mời giáo viên, chế độ đăng ký, khoá/mở tài khoản, cấp quyền, đặt lại mật khẩu.
 - **Trường**: tạo trường/trung tâm, gán giáo viên, cấp quyền **Admin trường** (ban giám hiệu xem báo cáo các lớp).
 - **Cloud**: đồng bộ "Hybrid". Máy chủ ở lớp chạy offline; khi có mạng, nhập địa chỉ Cloud + mã đồng bộ rồi bấm **Sync to Cloud** để đẩy kết quả lên máy chủ Cloud.
-- **Đăng nhập Google/Facebook** và **Zalo/SMS** cấu hình trong Cài đặt.
+- **Đăng nhập Google** và **Zalo/SMS** cấu hình trong Cài đặt.
 
 ---
 
