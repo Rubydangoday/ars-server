@@ -42,15 +42,116 @@ async def power_on(adapter):
     return bus, obj
 
 
-class Advertiser:
-    """Phát beacon qua BlueZ (D-Bus LEAdvertisingManager1). Mỗi loại gói một bản quảng bá; nội dung đổi → đăng ký lại bản đó."""
+class ScanController:
+    """Dieu phoi cua so scan tren cung adapter hci0.
 
-    def __init__(self, adapter, company_id):
+    Khi server can phat Exact ACK, ta tam dung scan trong mot cua so ngan
+    de adapter uu tien radio cho advertising downlink. Sau do scan duoc bat lai
+    trong khi ACK van co the tiep tuc advertise den khi ingest gui ACKS -.
+    """
+
+    def __init__(self):
+        self.scanner = None
+        self.running = False
+        self.lock = asyncio.Lock()
+        self.pause_gen = 0
+        self.paused_s = 0.0          # tổng thời gian dừng quét (đo trong mỗi chu kỳ báo trạng thái 5 s)
+        self.paused_at = None
+        self.pauses = 0
+
+    async def attach_and_start(self, scanner):
+        async with self.lock:
+            self.scanner = scanner
+            await scanner.start()
+            self.running = True
+
+    async def pause_for(self, seconds):
+        async with self.lock:
+            self.pause_gen += 1
+            gen = self.pause_gen
+            if self.scanner and self.running:
+                try:
+                    await self.scanner.stop()
+                    self.running = False
+                    self.paused_at = time.monotonic()
+                    self.pauses += 1
+                    log.info('DIAG SCAN PAUSE ack_window_ms=%d', round(seconds * 1000))
+                except Exception as e:
+                    log.warning('Khong tam dung duoc BLE scan: %s', e)
+            asyncio.create_task(self._resume_after(seconds, gen))
+
+    async def _resume_after(self, seconds, gen):
+        await asyncio.sleep(seconds)
+        async with self.lock:
+            if gen != self.pause_gen or not self.scanner or self.running:
+                return
+            try:
+                await self.scanner.start()
+                self.running = True
+                if self.paused_at is not None:
+                    self.paused_s += time.monotonic() - self.paused_at
+                    self.paused_at = None
+                log.info('DIAG SCAN RESUME after_ack_window')
+            except Exception as e:
+                log.warning('Khong bat lai duoc BLE scan: %s', e)
+
+    def take_duty(self):
+        """(số lần dừng, tổng giây dừng) từ lần gọi trước — để log tỉ lệ thời gian không quét."""
+        paused = self.paused_s + (time.monotonic() - self.paused_at if self.paused_at is not None else 0.0)
+        if self.paused_at is not None:
+            self.paused_at = time.monotonic()
+        n, self.pauses, self.paused_s = self.pauses, 0, 0.0
+        return n, paused
+
+    async def stop(self):
+        async with self.lock:
+            self.pause_gen += 1
+            if self.scanner and self.running:
+                try:
+                    await self.scanner.stop()
+                except Exception:
+                    pass
+            self.running = False
+            self.scanner = None
+
+
+class Advertiser:
+    """Phát beacon qua BlueZ theo kiểu ưu tiên ACK + background burst.
+
+    Mục tiêu cho một adapter laptop vừa scan uplink vừa advertise downlink:
+      * ACKS: ưu tiên tuyệt đối. Khi có ACK, tạm dừng STATE/ATTEND/OPENMASK.
+      * ATTEND/STATE/OPENMASK: chỉ phát thành burst ngắn rồi tự unregister.
+        Ingest sẽ gửi heartbeat định kỳ (state_refresh_s, mặc định 5 s), nên
+        Remote vẫn có cơ hội đồng bộ lại nếu bỏ lỡ một burst.
+      * Khi ACKS hết TTL và ingest gửi ACKS -, các background frame mới nhất
+        được khôi phục thành một burst ngắn.
+
+    Cách này tránh việc 3 background advertisements chiếm radio liên tục và
+    cạnh tranh với exact ACK.
+    """
+
+    BACKGROUND = (blecodec.F_STATE, blecodec.F_ATTEND, blecodec.F_OPENMASK)
+    BURST_TTL = {
+        blecodec.F_STATE: 0.90,
+        blecodec.F_ATTEND: 1.20,
+        blecodec.F_OPENMASK: 0.90,
+    }
+    ACK_EXCLUSIVE_S = 0.12        # dừng quét để card chỉ phát ACK (đã chứng minh tốt ở V3.8.4)
+    ACK_COALESCE_S = 0.03         # V3.10: gộp các ACK đến trong 30 ms thành MỘT lần đăng ký quảng bá
+    ACK_PAUSE_MIN_GAP_S = 0.40    # V3.10: hai lần dừng quét cách nhau ≥ 400 ms → quét ≥ 70 % thời gian dù cả lớp cùng bấm
+
+    def __init__(self, adapter, company_id, scan_controller=None):
         self.adapter, self.company = adapter, company_id
         self.bus = self.mgr = None
-        self.current = {}       # loại gói → bytes đang phát
-        self.objs = {}          # loại gói → đối tượng D-Bus đã đăng ký
+        self.current = {}       # kind -> bytes đang thực sự advertise
+        self.desired = {}       # kind -> bytes mới nhất cần giữ để restore
+        self.objs = {}          # kind -> D-Bus advertisement object
+        self.expire_gen = {}    # kind -> generation; chống timer cũ gỡ burst mới
         self.lock = asyncio.Lock()
+        self.ack_active = False
+        self.scan_controller = scan_controller
+        self.ack_flush = None         # task gộp ACK đang chờ
+        self.last_pause = -1e9        # monotonic lúc dừng quét gần nhất
 
     async def start(self):
         from dbus_fast import Variant
@@ -61,6 +162,15 @@ class Advertiser:
     def _make(self, kind, data):
         from dbus_fast.service import PropertyAccess, ServiceInterface, dbus_property, method
         company, Variant = self.company, self.Variant
+
+        # Background chỉ tồn tại trong burst ngắn nên có thể phát nhanh trong
+        # burst. Exact ACK vẫn nhanh nhất.
+        if kind == blecodec.F_ACKS:
+            min_interval, max_interval = 40, 60
+        elif kind == blecodec.F_ATTEND:
+            min_interval, max_interval = 150, 220
+        else:  # STATE / OPENMASK
+            min_interval, max_interval = 220, 320
 
         class Adv(ServiceInterface):
             def __init__(self):
@@ -80,34 +190,172 @@ class Advertiser:
 
             @dbus_property(access=PropertyAccess.READ)
             def MinInterval(self) -> 'u':  # noqa: F821
-                return 100
+                return min_interval
 
             @dbus_property(access=PropertyAccess.READ)
             def MaxInterval(self) -> 'u':  # noqa: F821
-                return 150
+                return max_interval
         return f'/ars/adv/k{kind:02x}', Adv()
+
+    async def _deactivate_locked(self, kind):
+        """Dừng advertisement nhưng giữ self.desired để có thể restore."""
+        path = f'/ars/adv/k{kind:02x}'
+        was_active = kind in self.objs or kind in self.current
+        if kind in self.objs:
+            try:
+                await self.mgr.call_unregister_advertisement(path)
+            except Exception:
+                pass
+            try:
+                self.bus.unexport(path)
+            except Exception:
+                pass
+            self.objs.pop(kind, None)
+        self.current.pop(kind, None)
+        if was_active and kind == blecodec.F_ACKS:
+            log.info('DIAG ACK ADV STOP')
+
+    async def _activate_locked(self, kind, data):
+        if self.current.get(kind) == data:
+            return True
+        await self._deactivate_locked(kind)
+        path, obj = self._make(kind, data)
+        self.bus.export(path, obj)
+        self.objs[kind] = obj
+        try:
+            await self.mgr.call_register_advertisement(path, {})
+            self.current[kind] = data
+            if kind == blecodec.F_ACKS:
+                n = data[3] if len(data) >= 4 else 0
+                recs = []
+                off = 4
+                for _ in range(n):
+                    if off + 5 > len(data):
+                        break
+                    seat, qid, seq, ans, status = data[off:off+5]
+                    recs.append(f'{seat}:{qid}:{seq}:{ans}:{status}')
+                    off += 5
+                log.info('DIAG ACK ADV START room=%s n=%d records=%s interval_ms=40-60',
+                         data[2] if len(data) >= 3 else '?', n, ','.join(recs) if recs else '-')
+            else:
+                log.debug('beacon %02X: %s', kind, data.hex())
+            return True
+        except Exception as e:
+            self.current.pop(kind, None)
+            self.objs.pop(kind, None)
+            try:
+                self.bus.unexport(path)
+            except Exception:
+                pass
+            log.warning('Không phát được beacon %02X: %s', kind, e)
+            return False
+
+    def _schedule_expiry_locked(self, kind, data):
+        ttl = self.BURST_TTL.get(kind)
+        if ttl is None:
+            return
+        gen = self.expire_gen.get(kind, 0) + 1
+        self.expire_gen[kind] = gen
+        asyncio.create_task(self._expire_after(kind, data, gen, ttl))
+
+    async def _expire_after(self, kind, data, gen, ttl):
+        await asyncio.sleep(ttl)
+        async with self.lock:
+            # Timer cũ không được gỡ một burst mới hơn.
+            if self.expire_gen.get(kind) != gen:
+                return
+            if self.ack_active:
+                return
+            if self.current.get(kind) == data:
+                await self._deactivate_locked(kind)
+                log.debug('background beacon %02X hết burst', kind)
+
+    async def _restore_background_locked(self):
+        """Sau ACK, phát lại snapshot background mới nhất thành burst."""
+        for kind in self.BACKGROUND:
+            data = self.desired.get(kind)
+            if not data:
+                continue
+            if await self._activate_locked(kind, data):
+                self._schedule_expiry_locked(kind, data)
+
+    @staticmethod
+    def _records(data):
+        """Tập bản ghi (ghế, câu, seq, đáp án, status) trong một gói ACKS."""
+        if not data or len(data) < 4:
+            return set()
+        out, off = set(), 4
+        for _ in range(data[3]):
+            if off + 5 > len(data):
+                break
+            out.add(tuple(data[off:off + 5]))
+            off += 5
+        return out
+
+    async def _flush_ack_later(self):
+        await asyncio.sleep(self.ACK_COALESCE_S)
+        async with self.lock:
+            data = self.desired.get(blecodec.F_ACKS)
+            if not data or not self.ack_active or self.current.get(blecodec.F_ACKS) == data:
+                return
+            new = self._records(data) - self._records(self.current.get(blecodec.F_ACKS))
+            for rec in sorted(new):
+                seat, qid, seq, ans, status = rec
+                log.info('DIAG ACK QUEUED seat=%d q=%d seq=%03d ans_code=%d status=%d', seat, qid, seq, ans, status)
+            # ACK ưu tiên tuyệt đối: gỡ STATE/ATTEND/OPENMASK (vẫn giữ trong desired để phát lại sau).
+            for bg in self.BACKGROUND:
+                await self._deactivate_locked(bg)
+            # Dừng quét ngắn để card chỉ phát ACK — chỉ khi có bản ghi MỚI và lần dừng trước đủ xa,
+            # để tổng thời gian "điếc" bị chặn trên (≤ ACK_EXCLUSIVE_S / ACK_PAUSE_MIN_GAP_S ≈ 30 %).
+            mono = time.monotonic()
+            if new and self.scan_controller and mono - self.last_pause >= self.ACK_PAUSE_MIN_GAP_S:
+                self.last_pause = mono
+                await self.scan_controller.pause_for(self.ACK_EXCLUSIVE_S)
+            await self._activate_locked(blecodec.F_ACKS, data)
+            if self.ack_active and self.desired.get(blecodec.F_ACKS) not in (None, self.current.get(blecodec.F_ACKS)):
+                self.ack_flush = asyncio.create_task(self._flush_ack_later())   # đổi trong lúc đang đăng ký
 
     async def set(self, kind, data):
         async with self.lock:
-            if not self.mgr or self.current.get(kind) == data:
+            if not self.mgr:
                 return
-            path = f'/ars/adv/k{kind:02x}'
-            if kind in self.objs:
-                try:
-                    await self.mgr.call_unregister_advertisement(path)
-                except Exception:
-                    pass
-                self.bus.unexport(path)
-            path, obj = self._make(kind, data)
-            self.bus.export(path, obj)
-            self.objs[kind] = obj
-            try:
-                await self.mgr.call_register_advertisement(path, {})
-                self.current[kind] = data
-                log.debug('beacon %02X: %s', kind, data.hex())
-            except Exception as e:
-                self.current.pop(kind, None)
-                log.warning('Không phát được beacon %02X: %s', kind, e)
+
+            if kind == blecodec.F_ACKS:
+                # [A5,13,room,n]. n=0 = không còn ACK pending.
+                empty = len(data) >= 4 and data[3] == 0
+                if empty:
+                    if not self.ack_active and kind not in self.current:
+                        return                       # đã trống (bản lặp từ trạng thái giữ lại)
+                    self.desired.pop(kind, None)
+                    self.ack_active = False
+                    log.info('DIAG ACK CLEAR received_empty_acks')
+                    await self._deactivate_locked(kind)
+                    # ACK đã xong: cho Remote một burst STATE/ATTEND/OPENMASK
+                    # mới nhất để đồng bộ UI/câu hỏi, rồi các beacon này tự tắt.
+                    await self._restore_background_locked()
+                    return
+
+                # Gói ACKS mới: chỉ ghi nhận, rồi gộp các thay đổi trong ACK_COALESCE_S thành một lần
+                # đăng ký (cả lớp cùng bấm → vài lần đăng ký thay vì mỗi gói một lần).
+                self.desired[kind] = data
+                self.ack_active = True
+                if self.current.get(kind) != data and (self.ack_flush is None or self.ack_flush.done()):
+                    self.ack_flush = asyncio.create_task(self._flush_ack_later())
+                return
+
+            # STATE / ATTEND / OPENMASK: luôn lưu snapshot mới nhất.
+            self.desired[kind] = data
+
+            # Trong lúc exact ACK đang phát, không cạnh tranh airtime.
+            if self.ack_active:
+                return
+
+            # Không đổi payload và burst vẫn còn chạy -> không cần đăng ký lại.
+            if self.current.get(kind) == data:
+                return
+
+            if await self._activate_locked(kind, data):
+                self._schedule_expiry_locked(kind, data)
 
 
 async def run(a, cp):
@@ -121,7 +369,8 @@ async def run(a, cp):
     status_topic = f'ars/{room}/gw/status'
     counters = {'n': 0}
 
-    adv = Advertiser(adapter, company) if advertise else None
+    scan_ctl = ScanController()
+    adv = Advertiser(adapter, company, scan_ctl) if advertise else None
     if not adv and sys.platform.startswith('linux'):
         try:
             await power_on(adapter)
@@ -176,29 +425,42 @@ async def run(a, cp):
                 continue
             pkt['ts'] = time.time()
             pkt['via'] = 'ble'
+            if pkt.get('type') == blecodec.PKT_ANSWER:
+                log.info('DIAG RF RX ANSWER room=%d seat=%d q=%d seq=%03d ans=%s rssi=%s',
+                         pkt.get('room', 0), pkt.get('id', 0), pkt.get('q', 0), pkt.get('seq', 0),
+                         pkt.get('ans', '-'), pkt.get('rssi'))
+            elif pkt.get('type') == blecodec.PKT_LOGIN:
+                log.info('DIAG RF RX LOGIN room=%d seat=%d seq=%03d rssi=%s',
+                         pkt.get('room', 0), pkt.get('id', 0), pkt.get('seq', 0), pkt.get('rssi'))
             cli.publish(f"ars/{pkt['room']}/resp", json.dumps(pkt), qos=1)
             counters['n'] += 1
 
     kw = {'detection_callback': on_adv, 'scanning_mode': 'active'}
     if sys.platform.startswith('linux'):
         kw['adapter'] = adapter
-        kw['bluez'] = {'filters': {'Transport': 'le', 'DuplicateData': True}}   # báo cả gói lặp (mỗi lần bấm phát 5 lần)
-    while True:                                           # Bluetooth tắt / adapter mất → thử lại
+        kw['bluez'] = {'filters': {'Transport': 'le', 'DuplicateData': True}}   # báo cả gói lặp (gói lặp cùng seq = gửi lại)
+    while True:                                           # Bluetooth tat / adapter mat -> thu lai
+        scanner = BleakScanner(**kw)
         try:
-            async with BleakScanner(**kw):
-                log.info('Đang nghe Remote qua Bluetooth %s (room %d, company 0x%04X)%s', adapter, room, company,
-                         ', phát beacon' if adv else '')
-                while True:
-                    await asyncio.sleep(5)
-                    n, counters['n'] = counters['n'], 0
-                    if cli:
-                        cli.publish(status_topic, json.dumps({'online': True, 'port': f'bluetooth {adapter}',
-                                                              'pkt_per_s': round(n / 5, 1), 'ts': time.time()}), qos=1, retain=True)
+            await scan_ctl.attach_and_start(scanner)
+            log.info('Dang nghe Remote qua Bluetooth %s (room %d, company 0x%04X)%s', adapter, room, company,
+                     ', phat beacon + ACK exclusive window' if adv else '')
+            while True:
+                await asyncio.sleep(5)
+                n, counters['n'] = counters['n'], 0
+                np, ps = scan_ctl.take_duty()
+                if np:
+                    log.info('DIAG SCAN DUTY pauses=%d paused_ms=%d of 5000 (%.0f%% scanning)', np, round(ps * 1000), 100 - ps * 20)
+                if cli:
+                    cli.publish(status_topic, json.dumps({'online': True, 'port': f'bluetooth {adapter}',
+                                                          'pkt_per_s': round(n / 5, 1), 'ts': time.time()}), qos=1, retain=True)
         except Exception as e:
-            log.warning('Bluetooth %s: %s — thử lại sau 3 s', adapter, e)
+            log.warning('Bluetooth %s: %s - thu lai sau 3 s', adapter, e)
             if cli:
                 cli.publish(status_topic, json.dumps({'online': False, 'port': f'bluetooth {adapter}', 'ts': time.time()}), qos=1, retain=True)
             await asyncio.sleep(3)
+        finally:
+            await scan_ctl.stop()
 
 
 def main():

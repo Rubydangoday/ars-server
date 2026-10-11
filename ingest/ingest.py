@@ -6,10 +6,10 @@
    thời hạn, số lựa chọn, có cho đổi đáp án không. Gói hợp lệ ghi vào `responses`,
    gói bị loại ghi vào `rejected` kèm lý do.
 3. Soạn trạng thái cho gateway phát beacon rồi gửi xuống  ars/<room>/cmd/gw :
-     STATE <room> <qid> <open 0|1> <bitmap 13 byte hex>   (ai đã có đáp án câu qid)
+     STATE <room> <qid> <open 0|1> <n_options> <bitmap 13 byte hex>   (ai đã có đáp án câu qid)
      ATTEND <bitmap 13 byte hex>                          (ai đã điểm danh)
      OPENMASK <mặt nạ 8 byte hex>                         (câu nào đang mở, cho ◀ ▶)
-     ACKS <ghế:câu,...>                                   (6 xác nhận gần nhất)
+     ACKS <ghế:câu:seq:đáp_án:status,...>                 (kết quả chính xác; status 0=OK, >0=NACK)
    và bản sao JSON giữ lại (retain) ở  ars/<room>/state  để bridge khởi động lại vẫn phát đúng.
 4. Đẩy số liệu trực tiếp lên  ars/<room>/live  (trang web cũng đọc được qua PHP).
 
@@ -31,14 +31,37 @@ import arscfg  # noqa: E402
 log = logging.getLogger('ingest')
 LETTERS = 'ABCDEFGHIJ'
 PKT_LOGIN, PKT_ANSWER = 1, 2
+DUP_WINDOW_S = 10  # burst/retry duplicates are expected only within a few seconds
+ACK_TTL_S = 1.8   # mỗi ghế: ACK sống 1,8 s kể từ lần nhận (hoặc nhận lại) gần nhất của giao dịch đó
+MAX_ACK_RECORDS = 4   # = blecodec.MAX_ACK_RECORDS: số bản ghi vừa một gói quảng bá ACKS
+
+# Exact result status returned to the Remote. 0 means the answer was accepted.
+# Non-zero values stop useless retries and tell the student why the server rejected it.
+REJECT_STATUS = {
+    'bad_option': 1,
+    'q_closed': 2,
+    'not_logged_in': 3,
+    'no_session': 4,
+    'q_not_open': 5,
+    'late': 6,
+    'no_change': 7,
+    'unknown_seat': 8,
+    'mapping_mismatch': 9,
+    'id_mismatch': 10,
+    'seat_taken': 11,
+    'mac_bound': 12,
+    'wrong_link': 13,
+    'malformed': 14,
+}
+STATUS_OTHER = 255
 
 
 def state_cmds(room, st):
     """Trạng thái → 4 dòng lệnh cho gateway USB / beacon Bluetooth (README mục 4.2)."""
-    return [f"STATE {room} {st['qid']} {st['open']} {arscfg.bitmap_hex(st['answered'])}",
+    return [f"STATE {room} {st['qid']} {st['open']} {st['n_options']} {arscfg.bitmap_hex(st['answered'])}",
             f"ATTEND {arscfg.bitmap_hex(st['attend'])}",
             f"OPENMASK {arscfg.mask64_hex(st['open_positions'])}",
-            "ACKS " + (','.join(f'{a}:{b}' for a, b in st['acks']) or '-')]
+            "ACKS " + (','.join(f'{seat}:{q}:{seq}:{ans}:{status}' for seat, q, seq, ans, status in st['acks']) or '-')]
 
 
 class Ingest:
@@ -48,7 +71,8 @@ class Ingest:
         self.db_state = arscfg.db_connect(cp)    # luồng soạn STATE
         self.lock = threading.Lock()
         self.dirty = set()                       # room cần phát lại STATE
-        self.acks = {}                           # room -> [(ghế, câu)] gần nhất
+        self.acks = {}                           # room -> [(ghế, câu, seq, answer_code, status)], cũ → mới, ≤ MAX_ACK_RECORDS
+        self.ack_exp = {}                        # room -> {ghế: hạn monotonic} — mỗi ghế hết hạn riêng (V3.10)
         self.refresh = float(cp['ingest'].get('state_refresh_s', 5))
         self.client = arscfg.mqtt_client('ars-ingest', clean_session=False)
         self.client.on_connect = self.on_connect
@@ -105,6 +129,12 @@ class Ingest:
 
     def reject(self, room, session_id, pkt, reason, raw):
         self.stats['rej'] += 1
+
+        # V3.7: an ANSWER that reached the server but was rejected still gets an
+        # exact result beacon. This stops the Remote from retrying until timeout.
+        # Repeated copies/retries intentionally re-arm the same NACK.
+        self.remember_reject_result(room, pkt, reason)
+
         # 5 bản lặp của cùng một lần bấm chỉ ghi 1 dòng vào bảng rejected
         key = (pkt.get('mac'), pkt.get('seq'), pkt.get('type'), reason)
         now = time.time()
@@ -117,7 +147,15 @@ class Ingest:
                'VALUES (NOW(3),%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                (room, session_id, pkt.get('mac'), pkt.get('type'), pkt.get('id'), pkt.get('q'),
                 (pkt.get('ans') or None), reason, raw))
-        log.info('LOẠI %-14s %s', reason, raw)
+        # V3.8.1 diagnostic log: print the transaction identity explicitly so
+        # Remote TIMEOUTs can be classified as uplink vs downlink failures.
+        log.info('LOẠI %-14s ghế %02s câu %s seq=%03s ans=%s rssi=%s',
+                 reason,
+                 str(pkt.get('id', '?')),
+                 str(pkt.get('q', '?')),
+                 str(pkt.get('seq', '?')),
+                 str(pkt.get('ans') or '-'),
+                 str(pkt.get('rssi', '?')))
 
     def process(self, pkt, raw):
         # 1. định dạng
@@ -166,6 +204,84 @@ class Ingest:
         self.stats['dup'] += 1
         self.x('UPDATE devices SET pkt_dup=pkt_dup+1 WHERE mac=%s', (mac,))
 
+    def remember_reject_result(self, room, pkt, reason):
+        """Publish an exact NACK for a syntactically valid ANSWER packet.
+
+        Malformed packets may not contain enough identity fields to reply safely,
+        so those are simply logged. LOGIN rejection still uses the existing login
+        handshake behavior; V3.7 result status is for ANSWER transactions.
+        """
+        try:
+            if int(pkt.get('type', 0)) != PKT_ANSWER:
+                return
+            r = int(room if room is not None else pkt['room'])
+            seat = int(pkt['id'])
+            question = int(pkt.get('q', 0))
+            seq = int(pkt['seq']) & 0xFF
+            ans = str(pkt.get('ans') or '').upper()[:1]
+            if ans not in LETTERS:
+                return
+        except (KeyError, ValueError, TypeError):
+            return
+        self.remember_ack(r, seat, question, seq, ans, REJECT_STATUS.get(reason, STATUS_OTHER))
+
+    def remember_ack(self, room, seat, question, seq, ans, status=0):
+        """Ghi nhớ kết quả chính xác của một ANSWER để phát xuống Remote.
+
+        Định danh (ghế, câu, seq, đáp án); status 0 = nhận, >0 = NACK. Mỗi ghế chỉ một bản ghi (Remote chỉ có một
+        giao dịch đang chờ). V3.10:
+          * mỗi ghế có hạn riêng ACK_TTL_S, gói lặp/gửi lại chỉ GIA HẠN, không đổi thứ tự danh sách;
+          * chỉ publish khi nội dung gói ACKS đổi → ble_scan không phải đăng ký lại quảng bá / dừng quét;
+          * bản ghi lặp đã rơi khỏi cửa sổ 4 bản ghi mới nhất thì được đưa lên cuối để phát lại.
+        """
+        try:
+            answer_code = LETTERS.index(str(ans).upper()) + 1
+        except ValueError:
+            return
+        ack = (int(seat) & 0xFF, int(question) & 0xFF, int(seq) & 0xFF,
+               answer_code & 0xFF, int(status) & 0xFF)
+        lst = self.acks.setdefault(room, [])
+        exp = self.ack_exp.setdefault(room, {})
+        exp[ack[0]] = time.monotonic() + ACK_TTL_S
+        if ack in lst:
+            return                                   # đang được phát nguyên vẹn: chỉ gia hạn
+        lst = [x for x in lst if x[0] != ack[0]] + [ack]
+        for old in lst[:-MAX_ACK_RECORDS]:           # rơi khỏi gói: bỏ (gửi lại sẽ được đưa vào lại)
+            exp.pop(old[0], None)
+        self.acks[room] = lst[-MAX_ACK_RECORDS:]
+        self.publish_acks(room)
+
+    def drop_ack(self, room, seat):
+        """Bỏ kết quả cũ của một ghế (Remote vừa LOGIN lại: seq 8 bit có thể bắt đầu lại)."""
+        lst = self.acks.get(room, [])
+        self.ack_exp.get(room, {}).pop(seat, None)
+        if any(x[0] == seat for x in lst):
+            self.acks[room] = [x for x in lst if x[0] != seat]
+            self.publish_acks(room)
+
+    def publish_acks(self, room):
+        """Gửi ngay gói ACKS (không chờ vòng trạng thái 0,3 s)."""
+        lst = self.acks.get(room, [])
+        line = 'ACKS ' + (','.join(f'{s}:{q}:{sq}:{a}:{st}' for s, q, sq, a, st in lst) or '-')
+        self.client.publish(f'ars/{room}/cmd/gw', line, qos=1)
+        self.dirty.add(room)
+
+    def expire_acks(self, now=None):
+        """Bỏ các bản ghi ACK đã hết hạn (gọi từ vòng trạng thái)."""
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            for room, exp in list(self.ack_exp.items()):
+                dead = [seat for seat, t in exp.items() if now >= t]
+                if not dead:
+                    continue
+                for seat in dead:
+                    exp.pop(seat, None)
+                lst = self.acks.get(room, [])
+                keep = [x for x in lst if x[0] not in dead]
+                if keep != lst:
+                    self.acks[room] = keep
+                    self.publish_acks(room)
+
     def login(self, ses, room, mac, seat, pkt, raw):
         sid = ses['id']
         if not self.q('SELECT 1 FROM students WHERE class_id=%s AND seat_no=%s', (ses['class_id'], seat), one=True):
@@ -177,6 +293,10 @@ class Ingest:
         by_seat = self.q('SELECT mac FROM session_logins WHERE session_id=%s AND seat_no=%s', (sid, seat), one=True)
         if by_seat:
             if by_seat['mac'] == mac:
+                # A LOGIN can also mean the Remote rebooted. Drop an old ANSWER ACK
+                # for this seat so a recycled 8-bit seq cannot be falsely confirmed.
+                self.drop_ack(room, seat)
+                self.dirty.add(room)                     # phát/giữ ATTEND để Remote xác nhận trạng thái đăng nhập
                 return self.dup(mac)                     # đã điểm danh rồi (gói lặp)
             return self.reject(room, sid, pkt, 'seat_taken', raw)   # ghế đã có máy khác
         by_mac = self.q('SELECT seat_no FROM session_logins WHERE session_id=%s AND mac=%s', (sid, mac), one=True)
@@ -184,6 +304,7 @@ class Ingest:
             return self.reject(room, sid, pkt, 'mac_bound', raw)    # máy này đã gắn ghế khác
         self.x('INSERT INTO session_logins (session_id, seat_no, mac, logged_at) VALUES (%s,%s,%s,NOW(3))',
                (sid, seat, mac))
+        self.drop_ack(room, seat)
         self.x('UPDATE devices SET last_seat=%s WHERE mac=%s', (seat, mac))
         self.stats['ok'] += 1
         self.dirty.add(room)
@@ -206,8 +327,20 @@ class Ingest:
                     'WHERE sq.session_id=%s AND q.set_id=%s AND q.position=%s', (sid, ses['set_id'], qid), one=True)
         if not sq:
             return self.reject(room, sid, pkt, 'q_not_open', raw)
-        if self.q('SELECT 1 FROM responses WHERE session_q_id=%s AND mac=%s AND seq=%s', (sq['id'], mac, seq), one=True):
-            return self.dup(mac)                         # 1 trong 5 lần phát của cùng 1 lần bấm OK
+        # seq is only 8-bit and restarts when the Remote reboots, so it must NOT be
+        # treated as a permanent unique transaction id for the whole question.
+        # Only copies/retries of the same (seq, answer) received recently are duplicates.
+        prior = self.q(
+            'SELECT answer FROM responses WHERE session_q_id=%s AND mac=%s AND seq=%s AND answer=%s '
+            'AND received_at >= DATE_SUB(NOW(3), INTERVAL %s SECOND) ORDER BY id DESC LIMIT 1',
+            (sq['id'], mac, seq, ans, DUP_WINDOW_S), one=True)
+        if prior:
+            # Same transaction reached the server a few seconds earlier. Re-advertise
+            # its exact ACK so a Remote that missed the first downlink can stop retrying.
+            self.remember_ack(room, seat, sq['position'], seq, prior['answer'])
+            log.info('TRÙNG  ghế %02d câu %d seq=%03d → %s rssi=%s',
+                     seat, sq['position'], seq, prior['answer'], str(rssi if rssi is not None else '?'))
+            return self.dup(mac)                         # repeated copy/retry of the same OK press
         if sq['status'] != 'open':
             return self.reject(room, sid, pkt, 'q_closed', raw)
         if sq['late']:
@@ -217,15 +350,12 @@ class Ingest:
         if not ses['allow_change'] and self.q('SELECT 1 FROM responses WHERE session_q_id=%s AND seat_no=%s',
                                               (sq['id'], seat), one=True):
             return self.reject(room, sid, pkt, 'no_change', raw)
-        n = self.x('INSERT IGNORE INTO responses (session_q_id, seat_no, mac, seq, answer, rssi, received_at) '
-                   'VALUES (%s,%s,%s,%s,%s,%s,NOW(3))', (sq['id'], seat, mac, seq, ans, rssi))
-        if n == 0:
-            return self.dup(mac)
+        self.x('INSERT INTO responses (session_q_id, seat_no, mac, seq, answer, rssi, received_at) '
+               'VALUES (%s,%s,%s,%s,%s,%s,NOW(3))', (sq['id'], seat, mac, seq, ans, rssi))
         self.stats['ok'] += 1
-        self.acks.setdefault(room, []).append((seat, sq['position']))
-        self.acks[room] = self.acks[room][-6:]
-        self.dirty.add(room)
-        log.info('NHẬN   ghế %02d câu %d → %s', seat, sq['position'], ans)
+        self.remember_ack(room, seat, sq['position'], seq, ans)
+        log.info('NHẬN   ghế %02d câu %d seq=%03d → %s rssi=%s',
+                 seat, sq['position'], seq, ans, str(rssi if rssi is not None else '?'))
 
     # ------------------------------------------------------- soạn trạng thái
     def s(self, sql, args=(), one=False):
@@ -236,8 +366,9 @@ class Ingest:
     def build_state(self, room):
         ses = self.s('SELECT s.*, c.conn_mode FROM sessions s JOIN classes c ON c.id=s.class_id '
                      'WHERE c.room_id=%s AND s.status="running" ORDER BY s.id DESC LIMIT 1', (room,), one=True)
-        st = {'room': room, 'session_id': None, 'mode': None, 'qid': 0, 'open': 0, 'answered': [], 'attend': [],
-              'open_positions': [], 'acks': self.acks.get(room, []), 'ts': time.time()}
+        st = {'room': room, 'session_id': None, 'mode': None, 'qid': 0, 'open': 0, 'n_options': 0,
+              'answered': [], 'attend': [], 'open_positions': [],
+              'acks': self.acks.get(room, []), 'ts': time.time()}
         if not ses:
             return st
         st['mode'] = 'ble'
@@ -254,6 +385,7 @@ class Ingest:
             if cur:
                 st['qid'] = cur['position']
                 st['open'] = 1 if cur['status'] == 'open' else 0
+                st['n_options'] = max(0, min(10, int(cur['n_options'] or 0)))
                 st['answered'] = [r['seat_no'] for r in self.s(
                     'SELECT DISTINCT seat_no FROM responses WHERE session_q_id=%s', (cur['id'],))]
                 dist = {r['answer']: r['n'] for r in self.s(
@@ -299,6 +431,10 @@ class Ingest:
                     if room not in rooms_running:
                         del last_rev[room]
                         self.dirty.add(room)
+                # ACK là burst ưu tiên ngắn: mỗi ghế hết hạn riêng; hết sạch thì publish "ACKS -" để
+                # ble_scan gỡ quảng bá ACK và trả sóng cho STATE/ATTEND/OPENMASK.
+                self.expire_acks()
+
                 t = time.time()
                 for room in rooms_running:
                     if t - last_sent.get(room, 0) > self.refresh:

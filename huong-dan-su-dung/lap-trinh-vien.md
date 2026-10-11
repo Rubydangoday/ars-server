@@ -66,6 +66,7 @@ Ba nguyên tắc thiết kế (đừng phá):
 | `db/schema.sql`, `db/migrate_0XX_*.sql` | Cấu trúc CSDL và các bước nâng cấp |
 | `deploy/` | Script cài Ubuntu, dịch vụ systemd, cấu hình Apache/Mosquitto, lệnh `ars` |
 | `tools/` | Giả lập Remote (`sim_clickers.py`), công cụ dịch (`i18n_*.py`), chụp màn hình (`shot.sh`) |
+| `firmware/` | Firmware Remote V3.10 + giao thức + quy trình test radio |
 | `tests/` | Kiểm thử tự động (`run_local.sh` chạy tất cả) |
 | `config.ini` | Cấu hình thật (mật khẩu DB, room…). **Không commit**; mẫu ở `config.ini.example` |
 
@@ -76,7 +77,7 @@ Ba nguyên tắc thiết kế (đừng phá):
 3. `ingest.py` → `Ingest.process()` kiểm tra lần lượt: định dạng → ghi `devices` → có buổi đang chạy với room này không → `via` phải là `ble` → LOGIN/ANSWER (ghế có trong lớp, ghép MAC, câu đang mở, hạn giờ, trùng seq…). Gói bị loại ghi vào `rejected` với lý do.
 4. Gói hợp lệ ghi `session_logins` / `responses`. VIEW `final_answers` lấy đáp án cuối của mỗi ghế.
 5. Phát trạng thái: `Ingest.build_state()` → `state_cmds()` tạo 4 lệnh `STATE / ATTEND / OPENMASK / ACKS` → `ars/<room>/cmd/gw` và bản giữ lại `ars/<room>/state`.
-6. `ble_scan.py` đổi mỗi lệnh thành 1 gói beacon (`blecodec.encode_cmd()`) và phát song song qua BlueZ. Remote đọc bit ghế của mình để bật đèn xanh.
+6. `ble_scan.py` đổi mỗi lệnh thành 1 gói beacon (`blecodec.encode_cmd()`) và phát qua BlueZ; ACKS được ưu tiên (gộp thay đổi trong 30 ms, dừng quét ngắn có giới hạn tần suất). Remote bật đèn khi thấy bản ghi khớp đúng giao dịch vừa gửi.
 7. Web: `session.php` + `assets/control.js` gọi `api/state.php` mỗi giây để vẽ lại bảng điều khiển. Giáo viên bấm nút → `api/action.php` ghi DB và tăng `state_rev`.
 
 Thứ tự kiểm tra và mã lý do loại: README mục 3.3. Định dạng byte: README mục 4.1 và docstring đầu `bridge/blecodec.py`.
@@ -162,12 +163,13 @@ Các bảng chính của phần Remote: README mục 3.4. Xem nhanh dữ liệu 
 
 ## 9. Bluetooth và firmware Remote
 
-- Phần cứng: Remote nRF52840 SuperMini (thiết kế mạch KiCad Rev J để riêng ngoài repo, **chưa có firmware**). Laptop là bộ thu, không cần gateway.
+- Phần cứng: Remote nRF52840 SuperMini (thiết kế mạch KiCad Rev J để riêng ngoài repo). Firmware: `firmware/ARS_remote_v3_10/` (Arduino, core Adafruit nRF52). Laptop là bộ thu, không cần gateway.
 - Hợp đồng giữa firmware và server là định dạng byte trong `bridge/blecodec.py`:
   - Remote → laptop 9 byte: `A5, type, room, ghế, câu, seq, đáp án, pin(2 byte LE)`.
-  - Laptop → Remote 4 loại beacon `A5 10..13`.
-  - **Đổi định dạng thì sửa `blecodec.py` và test trong `tests/ingest_integration.py`**; phần còn lại không phải đổi.
-- Firmware cần: phát gói 5 lần mỗi lần bấm OK (cùng seq), địa chỉ BLE random static cố định, nghe beacon ~300–500 ms sau khi gửi. Chân P0.09/P0.10 (hàng phím ROW4/ROW3) là chân NFC, phải cấu hình thành GPIO.
+  - Laptop → Remote 4 loại beacon `A5 10..13`; ACK/NACK **chính xác** `(ghế, câu, seq, đáp án, status)`. Chi tiết và lịch radio: `firmware/PROTOCOL_V3_10.md`.
+  - **Đổi định dạng thì sửa đồng bộ firmware + `blecodec.py` + `ble_scan.py` + `ingest.py` + tài liệu giao thức**, và test `tests/ingest_integration.py`, `tests/ble_scan_unit.py`.
+- Firmware V3.10: một đợt quảng bá non-connectable 150 ms rồi nghe ACK liên tục 1 s; chưa có thì nghỉ ngẫu nhiên tăng dần và gửi lại CÙNG seq (tối đa 4 lần); địa chỉ BLE random static cố định; số ghế/room nhập bằng MODE, lưu flash. Chân P0.09/P0.10 (hàng phím ROW4/ROW3) là chân NFC, dùng như GPIO.
+- Đo độ tin cậy trên máy thật: quy trình và tiêu chí PASS/FAIL ở `firmware/TEST_V3_10.md`; `tools/ble_txn_report.py` phân loại từng giao dịch từ log serial + journalctl.
 - Kiểm tra trên máy thật: `sudo ars ble` in mọi gói quảng bá nghe được; dòng `→ ARS {...}` là gói đúng định dạng.
 - Phát beacon chỉ chạy trên Linux/BlueZ (đối tượng D-Bus `org.bluez.LEAdvertisement1`, kiểu `broadcast`). Windows/macOS chỉ nghe được.
 - Không có Remote: `ars sim 30 1` hoặc `python3 tools/sim_clickers.py --room 1 -n 30` giả lập Remote ở tầng MQTT.
@@ -185,7 +187,8 @@ Kết quả mong đợi: mỗi bộ in số kiểm tra đạt, dòng cuối **`C
 | Bộ test | Kiểm tra |
 |---|---|
 | `http_smoke.py` | Mọi trang mở được, đăng nhập, quyền truy cập; tạo dữ liệu mẫu (`smoke.json`) cho các bộ sau |
-| `ingest_integration.py` | Luật nhận gói của ingest, giải mã gói BLE, mã hoá beacon |
+| `ingest_integration.py` | Luật nhận gói của ingest, ACK/NACK chính xác, nhiều ghế cùng lúc, hạn ACK từng ghế, giải mã gói BLE |
+| `ble_scan_unit.py` | `ble_scan.Advertiser` với D-Bus giả: gộp ACK, giới hạn dừng quét, ưu tiên ACK |
 | `extended_integration.py`, `v11_integration.py` | Bài tập, phụ huynh, trường, Cloud, thi đua, Zalo/SMS (giả lập) |
 | `oauth_integration.py`, `student_signup_integration.py` | Google/Facebook, học sinh tự đăng ký |
 | `i18n_integration.py` | Giao diện tiếng Anh không sót tiếng Việt ở các trang chính |
@@ -227,7 +230,7 @@ Log lỗi web: `sudo tail -50 /var/log/apache2/error.log`.
 Tạo `db/migrate_013_….sql` (chạy lại được), thêm vào `install_ubuntu.sh` và `tests/run_local.sh`, rồi chạy test.
 
 **Thêm một luật kiểm tra gói Remote**
-Sửa `Ingest.process()` (hoặc `login()` / `answer()`) trong `ingest/ingest.py`, gọi `self.reject(..., 'ma_ly_do', raw)`. Thêm nhãn tiếng Việt của lý do vào `REJECT_REASONS` (`lib/bootstrap.php`) và `REASON` (`assets/control.js`), thêm test vào `tests/ingest_integration.py`, cập nhật bảng ở README mục 3.3.
+Sửa `Ingest.process()` (hoặc `login()` / `answer()`) trong `ingest/ingest.py`, gọi `self.reject(..., 'ma_ly_do', raw)`. Thêm nhãn tiếng Việt của lý do vào `REJECT_REASONS` (`lib/bootstrap.php`) và `REASON` (`assets/control.js`), mã NACK vào `REJECT_STATUS` (`ingest.py`) và `resultStatusName()` (firmware), thêm test vào `tests/ingest_integration.py`, cập nhật bảng ở README mục 3.3.
 
 **Đổi định dạng gói Bluetooth theo firmware**
 Sửa `bridge/blecodec.py` (`decode_uplink`, `encode_cmd`), cập nhật test BLE trong `tests/ingest_integration.py` và README mục 4.1.

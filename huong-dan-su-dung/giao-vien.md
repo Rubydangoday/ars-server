@@ -188,7 +188,7 @@ Phụ huynh quên mật khẩu: cấp **mã mời mới** cho em đó.
 - **Clicker**: mọi Remote máy chủ đã nghe thấy, gồm địa chỉ (MAC), **số trên vỏ** (bạn tự đặt), room, ghế gần nhất, **pin**, **RSSI** (độ mạnh sóng), lần cuối thấy, tỉ lệ gói trùng.
 - **Ghép Remote với học sinh**: gắn cố định một Remote cho một số ghế. Remote khác bấm vào ghế đó sẽ bị từ chối, chống mượn máy bấm hộ. Nên đổi ghép ngoài giờ học.
 
-Đọc nhanh: pin dưới khoảng 2,6 V là cần thay pin. RSSI càng âm (ví dụ −90) là càng xa laptop. Tỉ lệ gói trùng cao là bình thường, vì mỗi lần bấm Remote phát 5 lần.
+Đọc nhanh: pin dưới khoảng 2,6 V là cần thay pin. RSSI càng âm (ví dụ −90) là càng xa laptop. Tỉ lệ gói trùng cao là bình thường, vì mỗi lần bấm Remote phát một đợt khoảng 6 gói cùng nội dung.
 
 ---
 

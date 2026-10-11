@@ -24,12 +24,12 @@ Remote có màn hình 2 số, đèn đỏ/xanh và 14 phím:
 | `1/A` … `9/I`, `0/J` | Nhập số ghế; chọn đáp án (1 = A, 2 = B, …, 9 = I, 0 = J) |
 | **◀ LEFT** / **▶ RIGHT** | Chuyển giữa các câu thầy cô đang mở |
 | **OK** | Gửi (điểm danh hoặc đáp án) |
-| **MODE** | Chức năng phụ, xem hướng dẫn kèm Remote |
+| **MODE** | Nhập số ghế (bấm MODE hai lần: nhập room) |
 
 **Điểm danh (đầu giờ)**
-1. Gạt công tắc để bật Remote.
-2. Nhập **số ghế** của bạn (thầy cô cho biết, từ 1 đến 99) rồi bấm **OK**.
-3. **Đèn xanh** nghĩa là máy chủ đã nhận, bạn đã điểm danh.
+1. Gạt công tắc để bật Remote. Remote nhớ số ghế của lần trước và tự điểm danh lại.
+2. Lần đầu (màn hình hiện `--`) hoặc khi đổi chỗ: bấm **MODE**, gõ **số ghế** (thầy cô cho biết, 1–99), bấm **OK**. Bấm MODE rồi OK ngay (không gõ) là điểm danh lại với số ghế cũ.
+3. **Đèn xanh** nghĩa là máy chủ đã nhận, bạn đã điểm danh. Lớp dùng room khác 1: bấm MODE hai lần, gõ room thầy cô cho, OK, rồi gõ số ghế, OK.
 
 **Trả lời câu hỏi**
 1. Khi thầy cô bấm *Mở câu*, màn hình Remote hiện số câu.
@@ -38,7 +38,7 @@ Remote có màn hình 2 số, đèn đỏ/xanh và 14 phím:
 
 **Lưu ý**
 - Mỗi Remote chỉ dùng cho **một số ghế** trong một buổi. Đổi Remote giữa giờ thì báo thầy cô để giải phóng số ghế.
-- Bấm **OK** một lần là đủ: Remote tự gửi lặp lại 5 lần để không bị mất.
+- Bấm **OK** một lần là đủ: Remote tự gửi lại (tối đa 4 lần) tới khi máy chủ xác nhận đúng lần bấm đó. **Đèn đỏ** là máy chủ từ chối (ví dụ câu đã đóng) hoặc không liên lạc được.
 - Bấm sau khi câu đã đóng thì đáp án không được tính.
 - Tắt Remote sau giờ học để tiết kiệm pin.
 

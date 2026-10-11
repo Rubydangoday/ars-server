@@ -50,6 +50,10 @@ ars-server/
 ├── CHANGES_V10.md                Danh sách file thay đổi ở v10
 ├── config.ini.example            Mẫu cấu hình: DB, MQTT, room, Bluetooth [ble], cổng serial gateway (tuỳ chọn), uploads (chép thành config.ini)
 │
+├── firmware/
+│   ├── ARS_remote_v3_10/         Firmware Remote nRF52840 (Arduino, Adafruit nRF52): bàn phím, LED 2 số, BLE, nhập ghế bằng MODE
+│   ├── PROTOCOL_V3_10.md         Giao thức BLE + lịch radio + so sánh V3.9 → V3.10
+│   └── TEST_V3_10.md             Quy trình test radio, tiêu chí PASS/FAIL
 ├── bridge/
 │   ├── ble_scan.py               Bluetooth laptop ⇄ MQTT: quét gói Remote, phát beacon trạng thái (BlueZ). Báo gw/status mỗi 5 s
 │   ├── blecodec.py               Định dạng byte trên sóng Remote ⇄ laptop (mã hoá / giải mã, dùng cho cả test)
@@ -59,7 +63,8 @@ ars-server/
 ├── common/
 │   └── arscfg.py                 Dùng chung cho Python: đọc config.ini, kết nối DB, mã hoá bitmap ghế / mặt nạ câu
 ├── tools/
-│   ├── sim_clickers.py           Giả lập N Remote ở tầng MQTT (chạy thử không cần phần cứng, thử tải)
+│   ├── sim_clickers.py           Giả lập N Remote V3.10 ở tầng MQTT (ACK chính xác, gửi lại, thử tải)
+│   ├── ble_txn_report.py         Đọc log serial Remote + journalctl → ACK lần đầu / gửi lại / NACK / UPLINK_MISS / ACK_MISS, PASS/FAIL
 │   ├── i18n_wrap.py              Công cụ dịch: bọc chuỗi tiếng Việt bằng t()/te(), liệt kê khoá dịch
 │   ├── i18n_collect.py           Duyệt mọi trang trên máy chủ thử, liệt kê chữ tiếng Việt chưa có bản dịch
 │   └── i18n_static.py            Quét mã nguồn PHP, liệt kê chữ tiếng Việt chưa có bản dịch
@@ -154,7 +159,7 @@ sequenceDiagram
     participant L as Bluetooth laptop (ble_scan.py)
     participant I as ingest.py
     participant D as MariaDB
-    R->>L: BLE quảng bá: LOGIN (room, id=ghế, seq) ×5 lần
+    R->>L: BLE quảng bá: LOGIN (room, id=ghế, seq), đợt 150 ms
     L->>I: MQTT ars/<room>/resp {"mac","room","type":1,"id",...,"via":"ble","ts"} (QoS 1)
     I->>D: UPSERT devices (pin, RSSI, last_seen)
     I->>D: kiểm tra buổi, ghế, ghép MAC → INSERT session_logins
@@ -164,8 +169,8 @@ sequenceDiagram
 
 ### 3.3 Trả lời câu hỏi (ANSWER)
 1. GV bấm **Mở câu** trên `session.php` → `api/action.php` ghi `session_questions` (status `open`, `deadline` theo đồng hồ MariaDB `NOW(3)`) → **tăng `sessions.state_rev`**.
-2. `ingest.py` (vòng `state_loop`, mỗi 0,3 s) thấy `state_rev` đổi → phát `STATE <room> <qid> 1 <bitmap>` + `OPENMASK` → laptop phát beacon → Remote biết câu `qid` đang mở.
-3. Học sinh chọn chữ, bấm OK → Remote phát ANSWER (`q` = số thứ tự câu trong bộ, `ans`, `seq` mới) **5 lần**.
+2. `ingest.py` (vòng `state_loop`, mỗi 0,3 s) thấy `state_rev` đổi → phát `STATE <room> <qid> 1 <n_options> <bitmap>` + `OPENMASK` → laptop phát beacon → Remote biết câu `qid` đang mở.
+3. Học sinh chọn chữ, bấm OK → Remote phát ANSWER (`q` = số thứ tự câu trong bộ, `ans`, `seq` mới) trong một đợt 150 ms.
 4. Laptop nghe gói (một hoặc nhiều bản lặp) → `ble_scan.py` → `ars/<room>/resp` → ingest **kiểm tra theo thứ tự**:
 
    | # | Kiểm tra | Lý do loại (`rejected.reason`) |
@@ -182,8 +187,8 @@ sequenceDiagram
    | 10 | Nếu buổi không cho đổi đáp án: ghế chưa trả lời câu này | `no_change` |
 
    (LOGIN có thêm: `unknown_seat` ghế không có trong lớp, `seat_taken` ghế đã có máy khác, `mac_bound` máy đã gắn ghế khác.)
-5. Hợp lệ → `INSERT IGNORE INTO responses` (khoá duy nhất `session_q_id, mac, seq`) → thêm vào danh sách ACKS → phát lại `STATE … <bitmap ghế đã trả lời>` + `ACKS`.
-6. Remote thấy bit ghế của mình trong bitmap STATE (hoặc cặp `ghế:câu` trong ACKS) → **bật đèn xanh**. Không thấy trong ~2 s → phát lại đợt nữa **với cùng seq** (server coi là trùng, không ghi 2 lần).
+5. Hợp lệ → ghi `responses` → bản ghi **ACK chính xác** `(ghế, câu, seq, đáp án, status 0)` của ghế đó, phát ngay trong gói ACKS. Bị loại → bản ghi **NACK** cùng định danh, `status` = mã lý do.
+6. Remote thấy bản ghi **khớp đúng ghế + câu + seq + đáp án** → đèn xanh (NACK → đèn đỏ, Serial in lý do). STATE không bao giờ được dùng làm ACK. Không thấy trong 1 s → nghỉ ngẫu nhiên rồi gửi lại **cùng seq** (tối đa 4 lần); server coi là trùng, không ghi 2 lần, chỉ gia hạn ACK.
 7. Bảng điều khiển và màn chiếu đọc `api/state.php` mỗi giây → ô học sinh chuyển xanh, biểu đồ cập nhật.
 8. Hết giờ: `ingest` tự đóng câu (`status=closed`) và phát STATE `open=0`. GV bấm **Kết thúc buổi** → `sessions.status=ended`.
 
@@ -207,7 +212,7 @@ Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/m
 ### 4.1 Remote ⇄ Laptop (BLE quảng bá, không kết nối)
 - Remote **phát gói quảng bá** (advertising) LOGIN/ANSWER; laptop **quét** (BlueZ, `ble_scan.py`) — không ghép đôi, không kết nối GATT, nên cả lớp gửi cùng lúc được.
 - Laptop **phát beacon** (quảng bá non-connectable) chứa trạng thái; mọi Remote cùng quét để biết câu đang mở và đã được nhận chưa.
-- Một lần bấm OK = **1 seq, phát 5 lần** (chống mất gói); bấm lần mới → seq tăng (0–255, quay vòng).
+- Một lần bấm OK = **1 seq**: một đợt quảng bá 150 ms (≈ 6 sự kiện) rồi nghe ACK 1 s; chưa có thì gửi lại cùng seq (tối đa 4 lần). Bấm lần mới → seq tăng (0–255, quay vòng). Chi tiết lịch radio: [firmware/PROTOCOL_V3_10.md](firmware/PROTOCOL_V3_10.md).
 - Định danh Remote = **địa chỉ BLE** của nó → firmware dùng địa chỉ **random static** cố định (mặc định của nRF52840), không bật privacy (địa chỉ đổi liên tục sẽ bị coi là máy khác).
 - Dữ liệu nằm trong **Manufacturer Specific Data** (AD type `0xFF`), mã công ty `[ble] company_id` (mặc định `0xFFFF` — mã thử nghiệm), byte đầu `0xA5`. Mã nguồn tham chiếu: `bridge/blecodec.py`.
 
@@ -227,16 +232,16 @@ Sau buổi học, kết quả được dùng cho: trang Kết quả, báo cáo/m
 Ví dụ ghế 7, room 1, câu 3, seq 12, chọn B, pin 2950 mV: company `0xFFFF`, data `A5 02 01 07 03 0C 02 86 0B`.
 Trong firmware nRF5 SDK / Zephyr: `BT_DATA(BT_DATA_MANUFACTURER_DATA, {0xFF,0xFF, 0xA5,0x02,0x01,0x07,0x03,0x0C,0x02,0x86,0x0B}, 11)`.
 
-**Laptop → Remote** (beacon, 4 gói quảng bá phát song song, cùng mã công ty, mỗi gói một loại):
+**Laptop → Remote** (beacon, cùng mã công ty; ACKS ưu tiên, STATE/ATTEND/OPENMASK phát thành burst ngắn khi không có ACK):
 
 | Gói | Byte |
 |---|---|
-| STATE | `A5 10` room qid open(0/1) + bitmap 13 byte ghế **đã có đáp án** câu qid |
+| STATE | `A5 10` room qid open(0/1) **n_options** + bitmap 13 byte ghế **đã có đáp án** câu qid |
 | ATTEND | `A5 11` room + bitmap 13 byte ghế **đã điểm danh** |
 | OPENMASK | `A5 12` room + 8 byte mặt nạ câu đang mở (câu p ở bit p−1) — cho phím ◀ ▶ |
-| ACKS | `A5 13` room n + n cặp (ghế, câu), n ≤ 6 — xác nhận gần nhất |
+| ACKS | `A5 13` room n + n bản ghi **(ghế, câu, seq, đáp án, status)**, n ≤ 4 — 4 kết quả mới nhất, mỗi ghế hết hạn sau 1,8 s |
 
-Remote chỉ đọc beacon có room trùng room mình nhớ, rồi xem bit ghế của mình để bật đèn xanh. Phát beacon cần Linux (BlueZ ≥ 5.50); trên Windows/macOS `ble_scan.py` chỉ nghe.
+Remote chỉ đọc beacon có room trùng room mình nhớ; dùng `n_options` để chặn tại chỗ đáp án vượt số lựa chọn, ATTEND để xác nhận điểm danh, ACKS để xác nhận đúng giao dịch vừa gửi. Phát beacon cần Linux (BlueZ ≥ 5.50); trên Windows/macOS `ble_scan.py` chỉ nghe.
 
 ### 4.2 Dữ liệu gói và lệnh trạng thái
 **Dạng JSON** (ble_scan.py giải mã ra, hoặc gateway USB in ra mỗi dòng) — đây là dữ liệu ingest nhận:
@@ -258,10 +263,10 @@ Remote chỉ đọc beacon có room trùng room mình nhớ, rồi xem bit ghế
 **Lệnh trạng thái** ingest gửi xuống (`ars/<room>/cmd/gw`), bộ thu chuyển thành beacon:
 | Lệnh | Ý nghĩa |
 |---|---|
-| `STATE <room> <qid> <open 0/1> <13 byte hex>` | Câu đang chiếu, đang mở hay đóng, bitmap ghế **đã có đáp án** câu đó |
+| `STATE <room> <qid> <open 0/1> <n_options> <13 byte hex>` | Câu đang chiếu, đang mở hay đóng, số lựa chọn, bitmap ghế **đã có đáp án** câu đó |
 | `ATTEND <13 byte hex>` | Bitmap ghế **đã điểm danh** |
 | `OPENMASK <8 byte hex>` | Các câu đang mở (câu p ở bit p−1) — cho phím ◀ ▶ chuyển câu trên Remote |
-| `ACKS <ghế:câu,...>` hoặc `ACKS -` | 6 xác nhận gần nhất (để Remote biết câu không phải câu đang chiếu cũng đã nhận) |
+| `ACKS <ghế:câu:seq:đáp_án:status,...>` hoặc `ACKS -` | Kết quả chính xác gần nhất (mỗi ghế 1 bản ghi; gói quảng bá giữ 4 bản ghi mới nhất). `status` 0 = nhận, khác 0 = mã lý do NACK |
 
 **Bitmap:** ghế n ở byte `n ÷ 8`, bit `n mod 8`, bit thấp trước, 13 byte = 104 bit (`common/arscfg.py → bitmap_hex`). Ví dụ ghế 1–4 → `1E000000000000000000000000`.
 Server phát lại toàn bộ trạng thái khi có thay đổi (≤ 0,3 s) **và định kỳ mỗi 5 s** (`[ingest] state_refresh_s`), nên bộ thu khởi động lại hay mất một lệnh vẫn tự đúng.
@@ -287,7 +292,7 @@ Phần cứng chỉ dùng **Remote nRF52840** nên mọi gói đều đến qua 
 - Kiểm tra Remote mới nạp firmware: `sudo ars ble` in mọi gói quảng bá, dòng `→ ARS {...}` là gói đúng định dạng 4.1.
 - **Một ID một máy** trong một buổi. Học sinh đổi Remote giữa giờ → GV bấm ô ghế để **giải phóng ID**, rồi học sinh điểm danh lại.
 - **Ghép Remote cố định** (Thiết bị → Ghép Remote) chống mượn máy bấm hộ; đổi ghép ngoài giờ học.
-- Tỉ lệ **gói trùng cao là bình thường** (mỗi lần bấm phát 5 lần; laptop có thể nghe được ít bản lặp hơn gateway). Nhiều gói `late`/`q_closed` = học sinh bấm sau khi đóng câu.
+- Tỉ lệ **gói trùng cao là bình thường** (mỗi đợt phát khoảng 6 sự kiện quảng bá cùng seq). Nhiều gói `late`/`q_closed` = học sinh bấm sau khi đóng câu.
 - Thời gian (mở câu, hạn giờ, nhận gói) đều lấy theo **đồng hồ MariaDB** — web và ingest không lệch giờ nhau.
 - (Gateway USB) rút ra cắm lại: bridge tự nối lại sau 2 s và phát lại trạng thái giữ lại. Linux thường là `/dev/ttyACM0` (người dùng dịch vụ cần nhóm `dialout`); Windows là `COMx` — xem `python bridge/bridge.py --list`.
 - Bộ câu dùng với Remote tối đa **64 câu** (mặt nạ OPENMASK 8 byte), lớp tối đa **99 ghế**, câu 2–10 lựa chọn (A–J).
