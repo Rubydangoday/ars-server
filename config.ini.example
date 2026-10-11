@@ -26,6 +26,11 @@ adapter = hci0
 company_id = 0xFFFF
 ; 1 = phát beacon trạng thái (câu đang mở, điểm danh, xác nhận) về Remote — chỉ Linux/BlueZ; 0 = chỉ nghe
 advertise = 1
+; (thử nghiệm radio, xem firmware/TEST_V3_10.md) dừng quét bao lâu để ưu tiên phát ACK, hai lần dừng cách nhau
+; tối thiểu bao lâu, gộp thay đổi ACK trong bao lâu — mặc định 120 / 400 / 30 ms
+;ack_exclusive_ms = 120
+;ack_pause_gap_ms = 400
+;ack_coalesce_ms = 30
 
 [ingest]
 ; pin dưới mức này (mV) thì web cảnh báo "pin yếu"

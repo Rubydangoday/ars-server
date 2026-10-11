@@ -45,6 +45,18 @@ static uint8_t gRoom = DEFAULT_ROOM;
 static uint8_t gSeat = 0;                          // 0 = not set yet
 
 static uint8_t seqNo = 0;
+
+// ----------------------- diagnostics over Serial (step 2 measurements) -----------------------
+//   d : toggle downlink monitor — prints frames/s heard per beacon type every second
+//   u : uplink probe — PROBE_COUNT bursts, one every PROBE_PERIOD_MS, seq 1..N (tools/ble_probe.py counts them)
+//   h : help
+static constexpr uint16_t PROBE_COUNT = 100;
+static constexpr uint32_t PROBE_PERIOD_MS = 700;
+static bool diagMonitor = false;
+static uint32_t diagLastMs = 0;
+static uint16_t probeLeft = 0;
+static uint16_t probeSeq = 0;
+static uint32_t probeNextMs = 0;
 static uint8_t currentQuestion = 1;
 static uint8_t selectedAnswer = 0; // 0 none, 1..10 A..J
 
@@ -583,9 +595,55 @@ void setup() {
     Serial.println("Green = accepted exact result. Red = server NACK or ACK timeout.");
 }
 
+static void processDiag() {
+    while (Serial.available()) {
+        const int c = Serial.read();
+        if (c == 'd') {
+            diagMonitor = !diagMonitor;
+            uint32_t junk[5]; uint8_t ph; int16_t rs;
+            ArsBle::diagSnapshot(junk, ph, rs);          // start from zero
+            diagLastMs = millis();
+            Serial.println(diagMonitor ? "DIAG monitor ON (frames/s heard for this room)" : "DIAG monitor OFF");
+        } else if (c == 'u') {
+            probeLeft = PROBE_COUNT;
+            probeSeq = 0;
+            probeNextMs = millis();
+            Serial.print("DIAG uplink probe: ");
+            Serial.print(PROBE_COUNT);
+            Serial.println(" bursts (run tools/ble_probe.py uplink on the laptop)");
+        } else if (c == 'h') {
+            Serial.println("DIAG: d = downlink monitor on/off, u = uplink probe, h = help");
+        }
+    }
+    const uint32_t now = millis();
+    if (diagMonitor && (uint32_t)(now - diagLastMs) >= 1000) {
+        uint32_t n[5]; uint8_t ph; int16_t rs;
+        ArsBle::diagSnapshot(n, ph, rs);
+        const float secs = (now - diagLastMs) / 1000.0f;
+        diagLastMs = now;
+        Serial.print("DIAG RX/s STATE="); Serial.print(n[0] / secs, 1);
+        Serial.print(" ATTEND=");   Serial.print(n[1] / secs, 1);
+        Serial.print(" OPENMASK="); Serial.print(n[2] / secs, 1);
+        Serial.print(" ACKS=");     Serial.print(n[3] / secs, 1);
+        Serial.print(" PROBE=");    Serial.print(n[4] / secs, 1);
+        Serial.print(" phase=");    Serial.print(ph);
+        Serial.print(" rssi=");     Serial.println(rs);
+    }
+    if (probeLeft && pending.kind == PENDING_NONE && (int32_t)(now - probeNextMs) >= 0) {
+        probeSeq++;
+        probeLeft--;
+        probeNextMs = now + PROBE_PERIOD_MS;
+        ArsBle::sendPacket(ArsBle::TYPE_PROBE, gRoom, gSeat, 0, static_cast<uint8_t>(probeSeq), 0, TEST_BATTERY_MV);
+        Serial.print("DIAG TX PROBE seq=");
+        Serial.println(probeSeq);
+        if (!probeLeft) Serial.println("DIAG uplink probe done");
+    }
+}
+
 void loop() {
     displayUpdate();
     statusLedUpdate();
+    processDiag();
 
     // Consume BLE beacons produced by server and handle ACKs.
     processDownlink();

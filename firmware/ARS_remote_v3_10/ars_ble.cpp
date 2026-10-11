@@ -16,6 +16,7 @@ static constexpr uint8_t FRAME_STATE    = 0x10;
 static constexpr uint8_t FRAME_ATTEND   = 0x11;
 static constexpr uint8_t FRAME_OPENMASK = 0x12;
 static constexpr uint8_t FRAME_ACKS     = 0x13;
+static constexpr uint8_t FRAME_PROBE    = 0x1F;   // tools/ble_probe.py downlink: [A5,1F,room,phase]
 
 // V3.10 radio schedule: ONE short TX burst, then one long uninterrupted RX window (in the .ino).
 // V3.9 switched TX/RX six times per attempt and listened only 3 x 120 ms, partly while the laptop
@@ -52,6 +53,12 @@ static volatile bool stateOpen = false;
 static volatile uint8_t stateNOptions = 0;
 
 static volatile bool openMaskPending = false;
+
+// Diagnostics counters (scanCallback -> diagSnapshot).
+static volatile uint32_t diagCount[5] = {0, 0, 0, 0, 0};
+static volatile uint8_t diagPhase = 0;
+static volatile int32_t diagRssiSum = 0;
+static volatile uint32_t diagRssiN = 0;
 static volatile uint64_t latestOpenMask = 0;
 
 static bool seatBitIsSet(const uint8_t* bitmap, size_t len, uint8_t seat) {
@@ -91,6 +98,14 @@ static void scanCallback(ble_gap_evt_adv_report_t* report) {
     }
 
     const uint8_t frame = data[1];
+
+    if (frame >= FRAME_STATE && frame <= FRAME_ACKS) diagCount[frame - FRAME_STATE]++;
+    else if (frame == FRAME_PROBE) {
+        diagCount[4]++;
+        if (dlen >= 4) diagPhase = data[3];
+    }
+    diagRssiSum += report->rssi;
+    diagRssiN++;
 
     if (frame == FRAME_ATTEND) {
         // [A5, 11, room] + 13-byte attendance bitmap
@@ -256,6 +271,16 @@ void sendPacket(uint8_t type,
     keepUiAlive(TX_BURST_MS);
     Bluefruit.Advertising.stop();
     Bluefruit.Scanner.start(0);
+}
+
+void diagSnapshot(uint32_t counts[5], uint8_t& lastProbePhase, int16_t& avgRssi) {
+    ARS_LOCK();
+    for (uint8_t i = 0; i < 5; ++i) { counts[i] = diagCount[i]; diagCount[i] = 0; }
+    lastProbePhase = diagPhase;
+    avgRssi = diagRssiN ? static_cast<int16_t>(diagRssiSum / static_cast<int32_t>(diagRssiN)) : 0;
+    diagRssiSum = 0;
+    diagRssiN = 0;
+    ARS_UNLOCK();
 }
 
 bool takeLoginAck() {

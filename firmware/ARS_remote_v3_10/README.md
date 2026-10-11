@@ -25,6 +25,8 @@ Firmware Remote cho ARS. Giao thức: [../PROTOCOL_V3_10.md](../PROTOCOL_V3_10.m
 - MODE → OK (không gõ gì) = LOGIN lại với ghế cũ (thay cho chức năng MODE của V3.9).
 - Đèn xanh = server nhận đúng giao dịch; đỏ dài = NACK (Serial in lý do) hoặc hết 4 lần gửi.
 
+**Chẩn đoán qua Serial (Bước 2, xem `../TEST_V3_10.md` mục 2):** gõ `d` = bật/tắt đếm beacon nghe được mỗi giây (`DIAG RX/s STATE= ATTEND= OPENMASK= ACKS= PROBE= phase= rssi=`), `u` = phát 100 gói PROBE (0,7 s/gói) cho `tools/ble_probe.py uplink`, `h` = trợ giúp. Gói PROBE (type 3) bị `ars-ble`/ingest bỏ qua.
+
 Serial 115200 in mọi giao dịch: `TX ANSWER …`, `No ACK yet -> random backoff …`, `RETRY ANSWER …`, `ACK ANSWER EXACT …`, `NACK ANSWER EXACT … reason=…`, `ACK TIMEOUT`.
 
 ## Thông số radio

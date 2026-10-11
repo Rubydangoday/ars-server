@@ -65,6 +65,8 @@ ars-server/
 ├── tools/
 │   ├── sim_clickers.py           Giả lập N Remote V3.10 ở tầng MQTT (ACK chính xác, gửi lại, thử tải)
 │   ├── ble_txn_report.py         Đọc log serial Remote + journalctl → ACK lần đầu / gửi lại / NACK / UPLINK_MISS / ACK_MISS, PASS/FAIL
+│   ├── ble_probe.py              Đo radio card Bluetooth laptop: phát ACK khi đang quét, bắt gói khi đang phát (cùng Remote ở chế độ d/u)
+│   ├── ble_diag_collect.sh       Gom thông tin card, main.conf, journalctl, btmon → một file .tar.gz
 │   ├── i18n_wrap.py              Công cụ dịch: bọc chuỗi tiếng Việt bằng t()/te(), liệt kê khoá dịch
 │   ├── i18n_collect.py           Duyệt mọi trang trên máy chủ thử, liệt kê chữ tiếng Việt chưa có bản dịch
 │   └── i18n_static.py            Quét mã nguồn PHP, liệt kê chữ tiếng Việt chưa có bản dịch
@@ -86,7 +88,7 @@ ars-server/
 │
 ├── deploy/                       Cài đặt & vận hành trên Ubuntu
 │   ├── install_ubuntu.sh         Cài một lệnh: Apache+PHP, MariaDB, Mosquitto, Python libs, chép code vào /opt/ars-server
-│   ├── ars                       Lệnh tiện ích: ars status | logs | ble | gateway ble/usb | watch | sim | links | public on/off | backup…
+│   ├── ars                       Lệnh tiện ích: ars status | logs | ble | ble-tune | gateway ble/usb | watch | sim | links | public on/off | backup…
 │   ├── ars-watch                 Xem CSDL trực tiếp (gói vào/bị loại) trên terminal
 │   ├── ars-ingest.service        systemd: chạy ingest.py
 │   ├── ars-ble.service           systemd: chạy ble_scan.py (nhóm bluetooth, tự rfkill unblock)

@@ -20,15 +20,54 @@ bash tests/run_local.sh       # ingest_integration 23, ble_scan_unit 11, … C�
 
 Nạp `firmware/ARS_remote_v3_10` (xem README cùng thư mục). Mỗi Remote: MODE → gõ ghế → OK (MODE hai lần nếu cần đổi room). Ghế phải có trong lớp, room = `[gateway] room` của laptop = mã lớp.
 
-## 2. Thu số liệu card Bluetooth của laptop (một lần, để quyết định bước 2)
+## 2. Đo radio của card Bluetooth laptop (Bước 2)
+
+Mục tiêu: biết card laptop **có phát ACK đều khi đang quét không**, **bắt được bao nhiêu % gói Remote khi đang phát ACK**, và **có phát nhiều bộ quảng bá song song được không** — ba con số quyết định Bước 3. Cần 1 Remote V3.10 nối Serial 115200, đặt cách laptop 1–2 m rồi 5–8 m (đo cả hai khoảng cách).
+
+### 2.1 Thông tin card (1 phút)
 
 ```bash
-sudo btmgmt info | head -5
-sudo btmgmt advinfo            # Instances / supported flags: có hỗ trợ nhiều bộ quảng bá trong controller không
-sudo btmon -w ~/ars_btmon.log  # chạy song song với test 3, Ctrl+C khi xong
+sudo bash tools/ble_diag_collect.sh                 # → ~/ars_ble_diag_<giờ>.tar.gz
 ```
+Log `ars-ble` khi khởi động cũng in `DIAG ADAPTER hci0 instances=… secondary=… ext_adv=yes|no`.
+`ext_adv=no` (không có quảng bá mở rộng) = BlueZ xoay vòng các bộ quảng bá bằng phần mềm, mặc định **2 s mỗi bộ** → nhiều gói ACKS song song (Bước 3) sẽ không chạy tốt trên card này.
 
-Gửi kèm `btmon` log khi báo kết quả: nó cho biết card có thật sự phát ACK khi đang quét không (nguyên nhân nghi ngờ của ACK_MISS seq 30/31 ở V3.9).
+### 2.2 Downlink: card có phát ACK khi đang quét không (~1 phút)
+
+```bash
+sudo systemctl stop ars-ble
+python3 tools/ble_probe.py downlink                 # 4 pha × 15 s
+```
+Remote: Serial gõ `d`. Ghi lại `PROBE=x/s` trung bình của từng `phase`.
+
+### 2.3 Uplink: laptop bắt được bao nhiêu gói khi đang phát ACK (~80 s)
+
+```bash
+python3 tools/ble_probe.py uplink                   # in % seq bắt được ở pha 1 (chỉ quét) và pha 2 (quét + phát ACK)
+```
+Remote: Serial gõ `u` ngay khi lệnh in hướng dẫn. Xong: `sudo systemctl start ars-ble`.
+
+### 2.4 Thử tỉ lệ quét thấp hơn (nếu 2.2 pha 2 tụt mạnh)
+
+```bash
+ars ble-tune scan 30 20        # quét 20 ms mỗi 30 ms (≈ 67 %), để card có khe phát ACK
+ars ble-tune show
+# lặp lại 2.2 + 2.3, rồi so sánh; quay về mặc định:
+ars ble-tune reset
+```
+Thông số ACK của `ars-ble` cũng chỉnh được không cần sửa code: `[ble] ack_exclusive_ms / ack_pause_gap_ms / ack_coalesce_ms` trong `/opt/ars-server/config.ini`, rồi `sudo systemctl restart ars-ble`.
+
+### 2.5 Đọc kết quả → quyết định Bước 3
+
+| Quan sát | Nghĩa | Bước tiếp |
+|---|---|---|
+| 2.2: pha 2 ≥ 80 % pha 1 | Card phát ACK tốt khi đang quét | ACK_MISS (nếu còn) do lịch nghe của Remote → chỉnh `ACK_LISTEN_MS` |
+| 2.2: pha 2 < 50 % pha 1, pha 4 khá hơn rõ | Quét 100 % lấn át phát | Giữ dừng quét ngắn; thử `ble-tune scan 30 20` |
+| 2.2: pha 2 < 50 % kể cả sau `ble-tune` | Card không chia sẻ radio tốt | **Gateway nRF52840 USB** (`sudo ars gateway usb`) |
+| 2.2: pha 3 ≪ pha 2 hoặc `ext_adv=no` | Không phát song song nhiều bộ | Bước 3 không dùng nhiều gói ACKS song song; dùng bảng ACK nén hoặc gateway |
+| 2.2: pha 3 ≈ pha 2 và `ext_adv=yes` | Phát song song được | Bước 3: 2–3 gói ACKS song song (8–12 bản ghi), định dạng không đổi |
+| 2.3: pha 1 < 99 % | Uplink yếu ngay cả khi chỉ quét | Tăng `TX_BURST_MS` 150 → 200, kiểm tra anten/vị trí laptop |
+| 2.3: pha 2 thấp hơn pha 1 > 5 điểm % | Phát ACK làm laptop bỏ lỡ gói Remote | Giảm `ack_exclusive_ms`, rút thời gian ACK trên sóng |
 
 ## 3. Test 1 Remote (50 giao dịch)
 

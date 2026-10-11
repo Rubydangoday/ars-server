@@ -158,6 +158,20 @@ class Advertiser:
         self.Variant = Variant
         self.bus, obj = await power_on(self.adapter)
         self.mgr = obj.get_interface('org.bluez.LEAdvertisingManager1')
+        # Ghi khả năng quảng bá của card vào log (Bước 2: có quảng bá mở rộng thì nhiều bộ chạy song song
+        # trong controller; không có thì BlueZ xoay vòng bằng phần mềm).
+        try:
+            props = obj.get_interface('org.freedesktop.DBus.Properties')
+            inst = (await props.call_get('org.bluez.LEAdvertisingManager1', 'SupportedInstances')).value
+            try:
+                sec = (await props.call_get('org.bluez.LEAdvertisingManager1', 'SupportedSecondaryChannels')).value
+            except Exception:
+                sec = []
+            log.info('DIAG ADAPTER %s instances=%s secondary=%s ext_adv=%s ack_exclusive_ms=%d pause_gap_ms=%d coalesce_ms=%d',
+                     self.adapter, inst, ','.join(sec) or '-', 'yes' if sec else 'no',
+                     round(self.ACK_EXCLUSIVE_S * 1000), round(self.ACK_PAUSE_MIN_GAP_S * 1000), round(self.ACK_COALESCE_S * 1000))
+        except Exception as e:
+            log.warning('Không đọc được khả năng quảng bá: %s', e)
 
     def _make(self, kind, data):
         from dbus_fast.service import PropertyAccess, ServiceInterface, dbus_property, method
@@ -371,6 +385,10 @@ async def run(a, cp):
 
     scan_ctl = ScanController()
     adv = Advertiser(adapter, company, scan_ctl) if advertise else None
+    if adv:                                   # chỉnh thông số ACK không cần sửa code (Bước 2: thử nghiệm)
+        adv.ACK_EXCLUSIVE_S = int(bc.get('ack_exclusive_ms', round(Advertiser.ACK_EXCLUSIVE_S * 1000))) / 1000
+        adv.ACK_PAUSE_MIN_GAP_S = int(bc.get('ack_pause_gap_ms', round(Advertiser.ACK_PAUSE_MIN_GAP_S * 1000))) / 1000
+        adv.ACK_COALESCE_S = int(bc.get('ack_coalesce_ms', round(Advertiser.ACK_COALESCE_S * 1000))) / 1000
     if not adv and sys.platform.startswith('linux'):
         try:
             await power_on(adapter)

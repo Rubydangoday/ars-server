@@ -15,6 +15,39 @@ case "${1:-}" in
     sudo systemctl stop ars-ble; sudo rfkill unblock bluetooth 2>/dev/null
     echo "Bấm nút trên Remote — dòng '→ ARS' là gói đúng định dạng. Ctrl+C để thoát."
     sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/bridge/ble_scan.py --dump; sudo systemctl start ars-ble ;;
+  ble-tune) # thông số radio BlueZ (Bước 2): ars ble-tune show | scan <chu kỳ ms> <cửa sổ ms> | rotate <ms> | reset
+    conf=/etc/bluetooth/main.conf
+    case "${2:-show}" in
+      show)
+        sudo awk '/^\[LE\]/{f=1;next} /^\[/{f=0} f && /^(ScanIntervalDiscovery|ScanWindowDiscovery|MultiAdvertisementRotationInterval)=/' $conf
+        echo "(không có dòng nào = mặc định của kernel: quét discovery 100 % thời gian, xoay vòng quảng bá 2000 ms)" ;;
+      scan|rotate|reset)
+        sudo cp -n $conf $conf.ars-backup
+        sudo python3 - "$conf" "$2" "${3:-}" "${4:-}" <<'PY'
+import re, sys
+conf, mode, a, b = sys.argv[1:5]
+s = open(conf).read()
+def setkey(s, key, val):
+    s = re.sub(rf'(?m)^#?\s*{key}=.*$', '', s)          # bỏ dòng cũ (kể cả dòng mẫu đã comment)
+    if val is None:
+        return s.replace('[LE]\n', f'[LE]\n#{key}=\n', 1)
+    return s.replace('[LE]\n', f'[LE]\n{key}={val}\n', 1)
+if mode == 'scan':
+    iv, win = float(a), float(b)
+    assert 2.5 <= win <= iv <= 10240, 'cần 2.5 <= cửa sổ <= chu kỳ (ms)'
+    s = setkey(s, 'ScanIntervalDiscovery', round(iv / 0.625))   # đơn vị 0,625 ms (HCI)
+    s = setkey(s, 'ScanWindowDiscovery', round(win / 0.625))
+elif mode == 'rotate':
+    s = setkey(s, 'MultiAdvertisementRotationInterval', int(a))  # ms
+else:
+    for k in ('ScanIntervalDiscovery', 'ScanWindowDiscovery', 'MultiAdvertisementRotationInterval'):
+        s = setkey(s, k, None)
+open(conf, 'w').write(s)
+PY
+        sudo systemctl restart bluetooth && sleep 2 && sudo systemctl restart ars-ble
+        echo "Đã áp dụng ($2 ${3:-} ${4:-}); bluetooth + ars-ble đã khởi động lại. Xem: ars ble-tune show" ;;
+      *) echo "Dùng: ars ble-tune show | scan <chu kỳ ms> <cửa sổ ms> | rotate <ms> | reset" ;;
+    esac ;;
   gateway) # chọn cách thu sóng: ars gateway ble (Bluetooth của máy, mặc định) | usb (gateway nRF52840 cắm USB)
     case "${2:-}" in
       usb) sudo systemctl disable --now ars-ble; sudo systemctl enable --now ars-bridge; sudo touch $DST/.gateway-usb; echo "Đang dùng gateway nRF52840 cắm USB (ars-bridge)" ;;
@@ -74,5 +107,5 @@ case "${1:-}" in
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | gateway ble|usb | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway ble|usb | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac
