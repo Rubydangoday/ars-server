@@ -1,5 +1,6 @@
 <?php
 // Xuất kết quả một buổi ra Excel: sheet theo câu, theo học sinh, và toàn bộ lượt gửi.
+//   export.php?id=…&format=csv → CSV bảng điểm theo học sinh (một bảng: điểm thang 10 + đáp án từng câu).
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/stats.php';
 require __DIR__ . '/lib/sheet.php';
@@ -30,4 +31,5 @@ foreach (qall('SELECT r.received_at, q.position, r.seat_no, r.mac, r.seq, r.answ
     $all[] = [$x['received_at'], (int)$x['position'], (int)$x['seat_no'], $x['mac'], (int)$x['seq'], $x['answer'], $x['rssi'] === null ? '' : (int)$x['rssi']];
 }
 $fname = 'ARS_' . preg_replace('/[^A-Za-z0-9_-]+/', '_', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $ses['class_name']) ?: 'lop') . '_' . date('Ymd_Hi', strtotime($ses['started_at'])) . '.xlsx';
+if (($_GET['format'] ?? '') === 'csv') send_csv($bys, substr($fname, 0, -5) . '_diem.csv');
 send_xlsx(['Theo cau' => $byq, 'Theo hoc sinh' => $bys, 'Tat ca luot gui' => $all], $fname);

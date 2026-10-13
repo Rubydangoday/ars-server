@@ -27,7 +27,9 @@ $sel=null;foreach($subs as $x)if((int)$x['id']===(int)($_GET['sub']??0))$sel=$x;
 ?>
 <div class="crumbs"><a href="homework.php">Bài tập về nhà</a> › <a href="homework.php?id=<?= $id ?>"><?= h($h['title']) ?></a> › Chấm bài</div>
 <div class="page-head"><div><h1>✍️ <?= h($h['title']) ?></h1><p class="muted"><?= h($h['class_name']) ?> · <?= $nq ?> câu · AI chỉ gợi ý — điểm chính thức do bạn xác nhận rồi công bố cho học sinh và phụ huynh.</p></div>
-  <a class="btn" href="homework.php?id=<?= $id ?>">← Đề bài</a></div>
+  <div class="row" style="margin:0"><a class="btn" href="homework_export.php?id=<?= $id ?>">⬇ <?= te('Xuất bảng điểm Excel') ?></a>
+    <a class="btn" href="homework_export.php?id=<?= $id ?>&format=csv">⬇ CSV</a>
+    <a class="btn" href="homework.php?id=<?= $id ?>">← Đề bài</a></div></div>
 <div class="ui-kpis">
   <?= ui_kpi('📬', count($done) . '/' . $ns, 'Đã nộp', '', 'blue') ?>
   <?= ui_kpi('✍️', (string)count(array_filter($done, fn($x) => $x['n_open'] > 0)), 'Bài còn câu chưa chấm', '', 'orange') ?>

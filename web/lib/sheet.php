@@ -145,6 +145,35 @@ function send_xlsx(array $sheets, string $filename): void {
     exit;
 }
 
+/** Một bảng → nội dung CSV: BOM UTF-8 (Excel đọc đúng tiếng Việt), dấu ";" (thói quen Excel tiếng Việt; csv_read nhận cả "," lẫn ";").
+ *  Ô bắt đầu bằng = + - @ (hoặc tab / CR) được thêm dấu ' phía trước: Excel không chạy chúng như công thức (CSV injection).
+ *  Số giữ nguyên (điểm âm như -1 vẫn là số). */
+function csv_string(array $rows): string {
+    $fh = fopen('php://memory', 'r+');
+    fwrite($fh, "\xEF\xBB\xBF");
+    foreach ($rows as $r) {
+        $r = array_map(function ($v) {
+            if (is_int($v) || is_float($v) || $v === null) return $v === null ? '' : (string)$v;
+            $v = (string)$v;
+            return ($v !== '' && strpbrk($v[0], "=+-@\t\r") !== false) ? "'" . $v : $v;
+        }, $r);
+        fputcsv($fh, $r, ';', '"', '');
+    }
+    rewind($fh);
+    $out = stream_get_contents($fh);
+    fclose($fh);
+    return $out;
+}
+
+function send_csv(array $rows, string $filename): void {
+    $out = csv_string($rows);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . strlen($out));
+    output_raw(); echo $out;
+    exit;
+}
+
 /** Tìm dòng tiêu đề (dòng đầu có chữ) và trả về các dòng dữ liệu phía sau, bỏ dòng trống. */
 function data_rows(array $rows): array {
     $out = []; $header = true;

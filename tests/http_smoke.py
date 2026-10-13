@@ -54,6 +54,13 @@ sub=None
 for f in forms:
     aid=f.select_one('[name=answer_id]')['value'];sub=f.select_one('[name=submission]')['value'];post(t,grade,{'action':'grade','answer_id':aid,'submission':sub,'score':1,'feedback':'Làm tốt.'})
 post(t,grade,{'action':'release','submission':sub});expect('Làm tốt.' in page(s,'student/'+url).text,'Official score visible after release')
+# Bảng điểm bài tập về nhà: Excel + CSV (BOM UTF-8, ";"), giáo viên khác không xuất được
+r=t.get(BASE+'homework_export.php?id='+str(hid));expect(zipfile.is_zipfile(io.BytesIO(r.content)) and 'Học sinh kiểm thử' in zipfile.ZipFile(io.BytesIO(r.content)).read('xl/worksheets/sheet1.xml').decode(),'Homework score XLSX lists the class')
+import csv as _csv
+r=t.get(BASE+'homework_export.php?id='+str(hid)+'&format=csv');rows=list(_csv.reader(io.StringIO(r.content.decode('utf-8-sig')),delimiter=';'))
+row=next((x for x in rows if 'Học sinh kiểm thử' in x),None)
+expect(r.content.startswith(b'\xef\xbb\xbf') and 'Thang 10' in rows[0] and row and row[3]=='Đã công bố' and row[rows[0].index('Thang 10')]=='10','Homework score CSV: BOM, header, released student row scored 10/10')
+expect(other.get(BASE+'homework_export.php?id='+str(hid)).status_code==404,'Other teacher cannot export homework scores')
 # Invalid AI offline must not publish a score
 r=post(t,grade,{'action':'ai','answer_id':forms[1].select_one('[name=answer_id]')['value'],'submission':sub});expect('Ollama' in r.text,'Offline AI grading blocked clearly')
 # Parent token one-use and class-scoped access
@@ -62,6 +69,8 @@ p=requests.Session();post(p,'parent/index.php',{'action':'register','username':d
 p2=requests.Session();r=post(p2,'parent/index.php',{'action':'register','username':d['prefix']+'_parent2','password':d['password'],'full_name':'Khác','invite':token});expect('đã dùng' in r.text,'Parent invite cannot be reused')
 # Grade workbook and projector state; correct hidden until teacher reveals
 r=t.get(BASE+'analytics.php?class='+str(d['class'])+'&format=xlsx');expect(zipfile.is_zipfile(io.BytesIO(r.content)),'Analytics XLSX valid')
+r=t.get(BASE+'analytics.php?class='+str(d['class'])+'&format=csv');expect(r.content.startswith(b'\xef\xbb\xbf') and 'Điểm' in next(_csv.reader(io.StringIO(r.content.decode('utf-8-sig')),delimiter=';')),'Analytics score CSV valid')
+r=t.get(BASE+'export.php?id='+str(d['session'])+'&format=csv');expect(r.content.startswith(b'\xef\xbb\xbf') and 'Điểm (thang 10)' in next(_csv.reader(io.StringIO(r.content.decode('utf-8-sig')),delimiter=';')),'Session score CSV valid')
 post(t,'api/action.php',{'session':d['session'],'question':d['question'],'action':'open'})
 r=t.get(BASE+'api/state.php?id='+str(d['session'])+'&view=projector').json();expect('correct' not in r['current'],'Projector hides correct answer')
 post(t,'projector.php?id='+str(d['session']),{'live':'on'});r=t.get(BASE+'api/state.php?id='+str(d['session'])+'&view=projector').json();expect('dist' in r['current'] and 'correct' not in r['current'],'Live bars do not expose answer key')

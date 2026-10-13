@@ -22,7 +22,7 @@ foreach ($classes as $c) {
 }
 uasort($rows, fn($a, $b) => strcmp(trim(strrchr(' ' . $a['name'], ' ')), trim(strrchr(' ' . $b['name'], ' '))) ?: strcmp($a['name'], $b['name']));
 
-if (($_GET['format'] ?? '') === 'xlsx') {
+if (in_array($_GET['format'] ?? '', ['xlsx', 'csv'], true)) {
     require __DIR__ . '/lib/sheet.php';
     $sheet = [array_merge(['Mã học sinh', 'Họ tên'], array_merge(...array_map(fn($c) => [($c['subject'] ?: $c['name']) . ' — % đúng', ($c['subject'] ?: $c['name']) . ' — có mặt'], $classes ?: [[]])))];
     foreach ($rows as $r) {
@@ -30,14 +30,16 @@ if (($_GET['format'] ?? '') === 'xlsx') {
         foreach ($classes as $c) { $x = $r['cells'][(int)$c['id']] ?? null; $line[] = $x && $x['n'] ? round(100 * $x['ok'] / $x['n'], 1) : ''; $line[] = $x ? $x['present'] . '/' . $x['sessions'] : ''; }
         $sheet[] = $line;
     }
-    send_xlsx(['Tong hop' => $sheet], 'ARS_lop_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $name) . '.xlsx');
+    $base = 'ARS_lop_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $name);
+    if ($_GET['format'] === 'csv') send_csv($sheet, $base . '.csv');
+    send_xlsx(['Tong hop' => $sheet], $base . '.xlsx');
 }
 
 page_head('Lớp ' . $name, 'school.php');
 ?>
 <p class="crumbs"><?= is_school_admin() ? '<a href="school.php">Trường của tôi</a> › ' : '' ?>Lớp hành chính</p>
 <h1>Lớp <?= h($name) ?> <span class="muted small">GV chủ nhiệm: <?= h($hr['full_name'] ?? 'chưa gán') ?></span></h1>
-<p><a class="btn" href="cohort.php?name=<?= rawurlencode($name) ?>&format=xlsx">Xuất Excel</a> <button onclick="window.print()">In / Lưu PDF</button></p>
+<p><a class="btn" href="cohort.php?name=<?= rawurlencode($name) ?>&format=xlsx">Xuất Excel</a> <a class="btn" href="cohort.php?name=<?= rawurlencode($name) ?>&format=csv">Xuất CSV</a> <button onclick="window.print()">In / Lưu PDF</button></p>
 <?php if (!$classes): ?><div class="card muted">Chưa có lớp bộ môn nào gắn lớp hành chính này. Giáo viên bộ môn điền “Lớp hành chính” trong trang lớp.</div><?php else: ?>
 <section class="card"><div style="overflow:auto"><table class="grid">
   <thead><tr><th>Học sinh</th><?php foreach ($classes as $c): ?><th><?= h($c['subject'] ?: $c['name']) ?><br><span class="small muted"><?= h($c['teacher_name']) ?></span></th><?php endforeach; ?></tr></thead><tbody>

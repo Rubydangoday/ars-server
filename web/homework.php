@@ -79,7 +79,7 @@ document.querySelector('[data-hw-filter]')?.addEventListener('click', (e) => {
 <div class="page-head"><div><h1><?= h($h['title']) ?> <?= $h['published'] ? '<span class="tag ok">● Đã công bố</span>' : '<span class="tag">Nháp</span>' ?></h1>
   <p class="muted"><?= h($h['class_name']) ?> · <?= count($qs) ?> câu · tổng <?= rtrim(rtrim(number_format($total,2,'.',''),'0'),'.') ?> điểm · hạn nộp <?= $h['due_at'] ? h(date('d/m/Y H:i', strtotime($h['due_at']))) : 'không giới hạn' ?> · đã nộp <?= $nsub ?>/<?= $ns ?></p></div>
   <form method="post" class="row" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="publish"><input type="hidden" name="id" value="<?= $id ?>">
-    <button class="<?= $h['published'] ? '' : 'primary' ?>"><?= $h['published'] ? 'Ẩn bài' : 'Công bố cho học sinh' ?></button> <a class="btn" href="homework_grade.php?id=<?= $id ?>">Chấm / công bố kết quả</a></form></div>
+    <button class="<?= $h['published'] ? '' : 'primary' ?>"><?= $h['published'] ? 'Ẩn bài' : 'Công bố cho học sinh' ?></button> <a class="btn" href="homework_grade.php?id=<?= $id ?>">Chấm / công bố kết quả</a> <a class="btn" href="homework_export.php?id=<?= $id ?>">⬇ Xuất bảng điểm</a></form></div>
 <?php if ($h['instructions']): ?><div class="card hw-ins"><b>Hướng dẫn</b><p><?= nl2br(h($h['instructions'])) ?></p></div><?php endif; ?>
 <div class="hw-grid">
   <section class="stack" style="max-width:none">

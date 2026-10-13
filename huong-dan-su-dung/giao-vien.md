@@ -54,7 +54,7 @@ Nút **▶ Bắt đầu** màu cam luôn ở góc phải để mở nhanh buổi
    - **Mã lớp (room, 1–255)**: con số mà Remote của học sinh phải nhớ. Mỗi phòng học dùng một room. Room này phải trùng với `[gateway] room` trong `config.ini` của máy chủ (hỏi người cài máy chủ nếu đổi room).
 2. Vào lớp, thêm học sinh:
    - Từng em: MSSV, họ tên, **số ghế (1–99)**. Số ghế chính là **ID học sinh gõ trên Remote**.
-   - Hoặc nhập cả danh sách từ file Excel/CSV.
+   - Hoặc nhập cả danh sách từ file Excel (.xlsx) hoặc CSV (dấu `,` hoặc `;`, UTF-8): xem trước rồi mới xác nhận.
 3. **Mã tham gia lớp** (ví dụ `FDDC78`) hiện trong trang lớp, kèm link `http://…/hs/FDDC78` và nút **QR** để chiếu cho cả lớp quét. Học sinh chưa có trong danh sách dùng mã này để tự đăng ký vào lớp và được cấp số ghế trống tiếp theo.
    - **Khoá đăng ký**: ngừng nhận học sinh mới.
    - **Đổi mã**: tạo mã mới khi mã cũ bị lộ.
@@ -126,11 +126,14 @@ Chạy thử bằng Remote giả lập: trên máy chủ gõ `ars sim 30` (30 Re
 Bấm vào một buổi để xem:
 - **Theo câu**: tỉ lệ đúng (p), độ phân biệt (D), phương án nhiễu được chọn nhiều, thời gian trả lời.
 - **Theo học sinh**: từng em đúng/sai câu nào.
-- **Xuất Excel**.
+- **Xuất Excel (.xlsx)**: 3 sheet — theo câu, theo học sinh (điểm thang 10, đáp án từng câu), toàn bộ lượt gửi.
+- **Xuất điểm CSV**: chỉ bảng điểm theo học sinh, mở được bằng Excel / Google Sheets / phần mềm quản lý điểm.
 
 Các nơi khác:
 - **Kết quả → Luyện tập của học sinh**: lịch sử học sinh tự ôn trên web (bài được giao, ôn câu sai, ôn chủ đề, làm lại buổi).
-- **Thêm → Báo cáo**: báo cáo kỹ năng và điểm theo lớp, theo chủ đề.
+- **Thêm → Báo cáo**: báo cáo kỹ năng và điểm theo lớp, theo chủ đề; **Xuất Excel** hoặc **Xuất điểm CSV** (mọi buổi và bài tập đã công bố).
+
+File CSV dùng dấu `;` và mã UTF-8 (Excel tiếng Việt mở đúng dấu). Ô bắt đầu bằng `=`, `+`, `-`, `@` được thêm dấu `'` để Excel không coi là công thức.
 
 Sau mỗi buổi, học sinh tự xem lại được câu đúng/sai và rút kinh nghiệm trong trang học sinh.
 
@@ -153,6 +156,8 @@ Sau mỗi buổi, học sinh tự xem lại được câu đúng/sai và rút ki
 2. **＋ Thêm câu**: trắc nghiệm (lấy từ ngân hàng), **tự luận**, **vẽ tay** hoặc **ghi âm**. Mỗi câu có điểm tối đa, đáp án mẫu / tiêu chí chấm.
 3. **Công bố** để học sinh thấy bài.
 4. Khi có bài nộp: **Chấm / công bố kết quả**. Câu trắc nghiệm tự chấm; câu tự luận/vẽ/ghi âm bạn chấm điểm và ghi nhận xét. Học sinh và phụ huynh thấy kết quả sau khi công bố.
+
+5. **Xuất bảng điểm** (trang bài tập hoặc trang chấm bài): **Excel** gồm sheet *Diem* (mọi học sinh trong lớp, cả em chưa nộp: trạng thái, thời điểm nộp, điểm từng câu, tổng, thang 10) và sheet *Nhan xet*; hoặc **CSV** chỉ bảng điểm. Thang 10 chỉ có khi bài đã chấm hết.
 
 Trạng thái bài: *Bản nháp* → *Đang giao* → *Hết hạn*; số bài *chờ chấm* hiện ngay trong danh sách.
 

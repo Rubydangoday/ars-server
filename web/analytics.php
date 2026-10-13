@@ -8,11 +8,12 @@ if($c){
  foreach(qall('SELECT st.student_code,st.full_name,s.started_at,qs.title,COUNT(q.id) AS n,SUM(CASE WHEN f.answer=q.correct THEN 1 ELSE 0 END) AS ok FROM students st JOIN sessions s ON s.class_id=st.class_id AND s.status="ended" AND s.released=1 JOIN question_sets qs ON qs.id=s.set_id JOIN session_questions sq ON sq.session_id=s.id JOIN questions q ON q.id=sq.question_id AND q.correct IS NOT NULL LEFT JOIN final_answers f ON f.session_q_id=sq.id AND f.seat_no=st.seat_no WHERE st.class_id=? GROUP BY st.id,s.id,st.student_code,st.full_name,s.started_at,qs.title ORDER BY s.started_at',[$id]) as $r)$grades[]=[$r['student_code'],$r['full_name'],'Remote',$r['started_at'],$r['title'],(int)$r['ok'],(int)$r['n']];
 }
 $topics=[];foreach($data as $row)foreach($row as $tp=>$v)$topics[$tp]=true;$topics=array_keys($topics);sort($topics);$matrix=[array_merge(['Mã học sinh','Họ tên'],$topics)];foreach($students as $st){$row=[$st['student_code'],$st['full_name']];foreach($topics as $tp){$v=$data[$st['seat_no']][$tp]??null;$row[]=$v?round(100*$v['ok']/$v['n'],1):'';}$matrix[]=$row;}
+if($c&&($_GET['format']??'')==='csv')send_csv($grades,'ARS_diem_lop_'.$id.'.csv');
 if($c&&($_GET['format']??'')==='xlsx')send_xlsx(['Ket qua'=>$grades,'Ma tran chu de'=>$matrix],'ARS_bao_cao_lop_'.$id.'.xlsx');
 page_head('Báo cáo kỹ năng','analytics.php');
 $vcs=viewable_classes();
 echo '<div class="page-head"><div><h1>📈 '.te('Báo cáo kỹ năng và điểm').'</h1><p class="muted">'.te('Phần trăm đạt theo chủ đề từ kết quả đã công bố. Ô không có dữ liệu để trống. Đây là chỉ báo ôn tập, không thay đánh giá của giáo viên').'.</p></div>';
-if($c)echo '<div class="row" style="margin:0"><a class="btn" href="analytics.php?class='.$id.'&format=xlsx">⬇ '.te('Xuất Excel').'</a><button type="button" onclick="window.print()">🖨 '.te('In / Lưu PDF').'</button></div>';
+if($c)echo '<div class="row" style="margin:0"><a class="btn" href="analytics.php?class='.$id.'&format=xlsx">⬇ '.te('Xuất Excel').'</a><a class="btn" href="analytics.php?class='.$id.'&format=csv">⬇ '.te('Xuất điểm CSV').'</a><button type="button" onclick="window.print()">🖨 '.te('In / Lưu PDF').'</button></div>';
 echo '</div>';
 if(!$vcs){echo '<div class="card">'.ui_empty('📈',t('Chưa có lớp nào'),t('Tạo lớp và thêm học sinh ở tab Lớp học trước.'),'<a class="btn primary" href="classes.php">'.te('Đến Lớp học').'</a>').'</div>';page_foot();exit;}
 echo '<nav class="pill-tabs">';foreach($vcs as $r)echo '<a href="analytics.php?class='.$r['id'].'" class="'.((int)$r['id']===$id?'on':'').'">'.h(($r['cohort']?$r['cohort'].' · ':'').$r['name'].($r['subject']?' · '.$r['subject']:'').($r['is_owner']?'':' — '.$r['teacher_name'])).'</a>';echo '</nav>';

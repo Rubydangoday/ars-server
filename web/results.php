@@ -31,6 +31,7 @@ page_head(t('Kết quả') . ' — ' . $ses['class_name'], 'results.php');
 <h1><?= te('Kết quả:') ?> <?= h($ses['set_title']) ?></h1>
 <div class="row">
   <a class="btn primary" href="export.php?id=<?= (int)$ses['id'] ?>"><?= te('Xuất Excel (.xlsx)') ?></a>
+  <a class="btn" href="export.php?id=<?= (int)$ses['id'] ?>&format=csv" title="<?= te('Bảng điểm theo học sinh, mở được bằng Excel / Google Sheets') ?>"><?= te('Xuất điểm CSV') ?></a>
   <a class="btn" href="session.php?id=<?= (int)$ses['id'] ?>"><?= te('Bảng điều khiển') ?></a>
   <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="action" value="release"><input type="hidden" name="on" value="<?= $ses['released'] ? 0 : 1 ?>">
     <button><?= $ses['released'] ? t('Ẩn kết quả với học sinh') : t('Công bố cho học sinh xem lại') ?></button></form>

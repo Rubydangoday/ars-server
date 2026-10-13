@@ -2535,4 +2535,10 @@ return [
     'Chưa có gateway: dùng tạm Bluetooth của laptop bằng lệnh' => 'No gateway yet: use the laptop\'s Bluetooth for now with',
     'quay lại gateway' => 'back to the gateway',
     'Remote dùng lại số thứ tự cũ (bấm lại)' => 'Remote reused an old sequence number (press again)',
+    // ---- xuất bảng điểm CSV / bài tập về nhà
+    'Xuất điểm CSV' => 'Export scores (CSV)',
+    'Xuất CSV' => 'Export CSV',
+    'Xuất bảng điểm' => 'Export scores',
+    'Xuất bảng điểm Excel' => 'Export scores (Excel)',
+    'Bảng điểm theo học sinh, mở được bằng Excel / Google Sheets' => 'Per-student score sheet; opens in Excel / Google Sheets',
 ];
