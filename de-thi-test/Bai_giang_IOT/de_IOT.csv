@@ -1,0 +1,21 @@
+﻿STT;Noi dung;So lua chon;A;B;C;D;E;F;G;H;I;J;Dap an;Thoi gian;Chu de;Giai thich
+1;BLE dùng những kênh nào để quảng bá (advertising)?;4;40, 41, 42;0, 1, 2;11, 12, 13;37, 38, 39;;;;;;;D;30;4. BLE;BLE có 40 kênh: 37 kênh dữ liệu, 3 kênh quảng bá 37, 38, 39.
+2;Bluetooth Classic có bao nhiêu kênh 1 MHz và nhảy tần khoảng bao nhiêu lần mỗi giây?;4;40 kênh, 100 lần/s;79 kênh, 100 lần/s;79 kênh, 1600 lần/s;40 kênh, 1600 lần/s;;;;;;;C;30;4. BLE;Bluetooth: 79 kênh × 1 MHz, đổi kênh 1600 lần/giây.
+3;Dữ liệu trong một gói quảng bá BLE (legacy) tối đa bao nhiêu byte?;4;64;31;255;20;;;;;;;B;30;4. BLE;Advertisement data: 0–31 byte.
+4;Lớp nào của BLE chịu trách nhiệm phát hiện thiết bị và thiết lập kết nối (vai trò, quảng bá)?;4;L2CAP;GAP;GATT;ATT;;;;;;;B;30;4. BLE;GAP: device discovery, connection, các vai trò broadcaster/observer/central/peripheral.
+5;GATT trao đổi dữ liệu thông qua:;4;Địa chỉ IP;Topic MQTT;Gói quảng bá;Service và characteristic (read / write / notify);;;;;;;D;30;4. BLE;GATT định nghĩa service/characteristic để đọc, ghi, notify.
+6;Thiết bị chỉ phát quảng bá, không nhận kết nối, có vai trò GAP nào?;4;Peripheral;Broadcaster;Observer;Central;;;;;;;B;30;4. BLE;"Broadcaster chỉ phát; Observer chỉ nghe."
+7;Module HC-05 có baudrate mặc định là bao nhiêu (theo slide)?;4;38400;115200;9600;57600;;;;;;;A;30;4. BLE;"HC-05: 38400, mật khẩu 1234; HC-06: 9600."
+8;Chuẩn IEEE 802.11b hoạt động ở băng tần và tốc độ nào?;4;2,4 GHz, 54 Mbps;2,4 GHz, 11 Mbps;5 GHz, 1,3 Gbps;5 GHz, 54 Mbps;;;;;;;B;30;5. Wifi;802.11b: 2,4 GHz HR-DSSS 11 Mbps.
+9;Chuẩn 802.11ac (2014) hoạt động ở băng tần:;4;900 MHz;5 GHz;2,4 GHz;60 GHz;;;;;;;B;30;5. Wifi;802.11ac: 5 GHz, 256-QAM, đến 1,3 Gbps.
+10;MQTT hoạt động theo mô hình nào?;4;Peer-to-peer không máy chủ;Request/Response;Publish/Subscribe qua broker;Polling định kỳ;;;;;;;C;30;9. MQTT;Client publish lên topic, broker chuyển tới các client đã subscribe.
+11;QoS 1 trong MQTT đảm bảo:;4;Không đảm bảo;Ít nhất một lần;Tối đa một lần;Đúng một lần;;;;;;;B;30;9. MQTT;QoS 1: gửi lại tới khi nhận PUBACK nên có thể trùng.
+12;QoS nào đảm bảo bản tin được nhận đúng một lần?;4;QoS 0;QoS 3;QoS 1;QoS 2;;;;;;;D;30;9. MQTT;QoS 2: bắt tay 4 bước, exactly once.
+13;"Bản tin ""retained"" có tác dụng gì?";4;Xoá topic sau khi đọc;Client tự gửi lại khi mất mạng;Mã hoá bản tin;Broker giữ bản tin cuối của topic và gửi ngay cho client mới subscribe;;;;;;;D;30;9. MQTT;Broker lưu bản tin retained cuối cùng của mỗi topic.
+14;Ký tự đại diện nào khớp NHIỀU cấp topic trong MQTT?;4;Dấu ?;Dấu #;Dấu * (sao);Dấu +;;;;;;;B;30;9. MQTT;"""#"" khớp nhiều cấp (đặt cuối); ""+"" khớp đúng một cấp."
+15;CoAP chạy trên giao thức tầng vận chuyển nào?;4;TCP;UDP;SCTP;QUIC;;;;;;;B;30;9.2 CoAP;CoAP tối ưu cho IoT, chạy trên UDP.
+16;Bản tin CoAP loại Confirmable (CON) cần bên nhận trả về ACK.;2;Đúng;Sai;;;;;;;;;A;30;9.2 CoAP;"CON phải được ACK; NON (non-confirmable) thì không."
+17;Phương thức HTTP nào thường dùng để lấy dữ liệu từ server?;4;DELETE;GET;POST;PUT;;;;;;;B;30;7. Webserver;"GET đọc dữ liệu; POST gửi/tạo dữ liệu."
+18;Mã trạng thái HTTP 404 nghĩa là:;4;Lỗi máy chủ;Thành công;Không tìm thấy tài nguyên;Chuyển hướng tạm thời;;;;;;;C;30;7. Webserver;"404 Not Found; 200 OK; 500 Internal Server Error."
+19;Khoá chính (primary key) trong bảng SQL dùng để:;4;Định danh duy nhất mỗi dòng;Liên kết tới bảng khác bắt buộc;Sắp xếp bảng theo thời gian;Mã hoá dữ liệu;;;;;;;A;30;6. Database;Primary key là duy nhất và không NULL cho mỗi bản ghi.
+20;Băng ISM 2,4 GHz nằm trong khoảng tần số nào?;5;2,400 – 2,4835 GHz;868 – 915 MHz;2,000 – 2,400 GHz;2,483 – 2,600 GHz;5,150 – 5,850 GHz;;;;;;A;30;3. Communication;ISM 2,4 GHz: 2,4–2,4835 GHz, ngày càng đông thiết bị.

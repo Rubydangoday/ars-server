@@ -1,0 +1,21 @@
+﻿STT;Noi dung;So lua chon;A;B;C;D;E;F;G;H;I;J;Dap an;Thoi gian;Chu de;Giai thich
+1;"Đơn vị tổ chức mã nguồn cơ bản (""basic cell"") của ROS là:";4;Topic;Package;Launch file;Node;;;;;;;B;30;2. ROS basics;"Package là đơn vị cơ bản; một package có thể chứa nhiều node."
+2;Trong workspace ROS 2, thư mục nào chứa mã nguồn các package?;4;build;install;src;log;;;;;;;C;30;2. ROS basics;"src: source space; build/install/log do colcon tạo."
+3;Lệnh build workspace ROS 2 là:;4;ros2 build;colcon build;cmake --build;catkin_make;;;;;;;B;30;2. ROS basics;ROS 2 dùng colcon build (catkin_make là ROS 1).
+4;Lệnh Linux nào in ra thư mục làm việc hiện tại?;4;ls;mkdir;pwd;cd;;;;;;;C;30;2. Linux depth;pwd – Print Working Directory.
+5;Lệnh chạy một node trong ROS 2:;4;ros2 node <executable>;ros2 run <package> <executable>;rosrun <node>;ros2 start <node>;;;;;;;B;30;2. ROS basics;Ví dụ: ros2 run camera_opencv camera_publisher.
+6;Thư viện client C++ của ROS 2 là:;4;roscpp;rclcpp;rclpy;tf2;;;;;;;B;30;2. ROS basics;rclcpp cho C++, rclpy cho Python.
+7;File nào khai báo tên, phụ thuộc (dependencies) của một package ROS 2?;4;package.xml;CMakeCache.txt;setup.cfg;urdf.xml;;;;;;;A;30;2. ROS basics;package.xml cho ROS biết package là gì và phụ thuộc vào đâu.
+8;URDF là định dạng mô tả robot dựa trên:;4;XML;YAML;CSV;JSON;;;;;;;A;30;3. Define your robot;Unified Robot Description Format là định dạng XML.
+9;Hai phần tử chính của một mô hình URDF là:;4;link và joint;service và action;node và topic;world và plugin;;;;;;;A;30;3. Define your robot;"Link: thành phần vật lý; joint: chuyển động tương đối giữa các link."
+10;Thẻ nào trong một link dùng cho tính toán va chạm vật lý?;4;visual;inertial;collision;origin;;;;;;;C;30;3. Define your robot;"collision dùng cho physics; visual chỉ để hiển thị."
+11;Xacro được dùng để:;4;Điều khiển động cơ;Viết URDF gọn hơn bằng macro, chia nhiều file;Biên dịch package;Mô phỏng cảm biến;;;;;;;B;30;3. Define your robot;"URDF dài và lặp; xacro cho phép macro, biến, chia file."
+12;Gazebo mô tả model và world bằng định dạng nào?;4;STL;URDF;SDF;YAML;;;;;;;C;30;3. Define your robot;Simulation Description Format (SDF).
+13;"Thành phần nào của ros2_control là ""phiên dịch"" giữa thế giới ROS và phần cứng?";4;Resource Manager;Controller Manager;Broadcaster;Hardware Interface;;;;;;;D;30;4. ROS Control;Hardware interface là plugin C++ đọc/ghi phần cứng (read/write).
+14;"Thành phần được gọi là ""trái tim"" của ros2_control, quản lý vòng lặp thời gian thực:";4;URDF;Topic;Controller Manager;Hardware Interface;;;;;;;C;30;4. ROS Control;Controller manager quản lý thời gian vòng lặp và nạp/chạy controller.
+15;Controller nào dùng cho robot di chuyển vi sai (differential drive)?;4;joint_state_broadcaster;joint_trajectory_controller;gripper_controller;diff_drive_controller;;;;;;;D;30;4. ROS Control;diff_drive_controller nhận cmd_vel, tính vận tốc hai bánh.
+16;Thuật toán định vị robot trên bản đồ trong ROS (dùng particle filter, laser scan) là:;4;A*;GMapping;AMCL;EKF SLAM;;;;;;;C;30;5. ROS Navigation;Adaptive Monte Carlo Localization.
+17;Trong ROS 2 lifecycle node, trạng thái nào là node đang làm việc thực sự?;4;Finalized;Unconfigured;Inactive;Active;;;;;;;D;30;5. ROS Navigation;Unconfigured → Inactive (sẵn sàng) → Active (đang chạy) → Finalized.
+18;Một node của Behavior Tree trả về những trạng thái nào?;4;Success / Failure / Running;True / False;Start / Stop;Idle / Busy / Error / Done;;;;;;;A;30;6. Behaviour Tree;Control node và leaf node đều trả Success, Failure hoặc Running.
+19;Node nào có đúng MỘT con và thay đổi kết quả của con (ví dụ Inverter)?;4;Sequence;Fallback;Action;Decorator;;;;;;;D;30;6. Behaviour Tree;"Decorator node: một con; Inverter đảo Success ↔ Failure."
+20;So với máy trạng thái hữu hạn (FSM), Behavior Tree có ưu điểm chính là tính mô-đun, dễ mở rộng khi tác vụ phức tạp.;2;Đúng;Sai;;;;;;;;;A;30;6. Behaviour Tree;FSM thiếu tính mô-đun, kém hiệu quả khi số tác vụ tăng.
