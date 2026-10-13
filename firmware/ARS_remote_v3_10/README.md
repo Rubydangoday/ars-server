@@ -23,7 +23,19 @@ Firmware Remote cho ARS. Giao thức: [../PROTOCOL_V3_10.md](../PROTOCOL_V3_10.m
 | MODE | nhập **số ghế** | chuyển ghế ↔ room |
 | LEFT / RIGHT | đổi câu | LEFT = huỷ |
 
-- Lần đầu (flash trống) Remote hiện `--` và chờ nhập ghế. Room mặc định 1 (MODE hai lần để đổi).
+**Dấu hiệu từng chế độ (V3.11, `display.cpp`, `status_led.cpp`):**
+
+| Chế độ | Màn hình 2 số | Đèn |
+|---|---|---|
+| Bình thường | số câu đứng yên `03` | tắt |
+| Nhập ghế (MODE) | `Gh` 0,5 s ↔ số ghế / `--` 1 s | xanh nháy 120 ms mỗi 1 s |
+| Nhập phòng (MODE lần 2) | `Ph` 0,5 s ↔ số phòng 1 s | đỏ nháy 120 ms mỗi 1 s |
+| Đã chọn đáp án, chưa gửi | chữ cái A b C d E F G H I J ở ô trái, nhấp nháy (450/250 ms) | tắt |
+| Đang gửi | chữ cái đứng yên | tắt → xanh (nhận) / đỏ (NACK, hết giờ) |
+
+Đèn kết quả luôn ưu tiên hơn đèn nháy của chế độ nhập. Hết giờ (4 lần gửi) → chữ cái nhấp nháy lại, bấm OK để gửi lần mới.
+
+- Lần đầu (flash trống) Remote hiện `Gh` / `--` (đèn xanh nháy) và chờ nhập ghế. Room mặc định 1 (MODE hai lần để đổi).
 - MODE → OK (không gõ gì) = LOGIN lại với ghế cũ (thay cho chức năng MODE của V3.9).
 - Đèn xanh = server nhận đúng giao dịch (cả LOGIN); đỏ dài = NACK (Serial in lý do, ví dụ `SEAT_TAKEN` khi LOGIN vào ghế đã có máy khác) hoặc hết 4 lần gửi.
 

@@ -31,6 +31,9 @@ import arscfg  # noqa: E402
 log = logging.getLogger('bridge')
 
 GW_VID = 0x239A          # Adafruit / nice!nano bootloader + core Adafruit nRF52 (cả Remote lẫn gateway SuperMini)
+# Theo quy ước của Adafruit, PID < 0x8000 là BOOTLOADER (nice!nano 0x00B3, Feather 0x0029): board đang được nạp firmware.
+# Không bao giờ mở cổng đó — ghi "v" vào giữa lúc Arduino IDE / adafruit-nrfutil đang nạp làm hỏng việc nạp.
+NOT_GW_RETRY_S = 60      # cổng đã hỏi mà không phải gateway (Remote, thiết bị khác): 60 s sau mới hỏi lại
 SILENCE_S = 15           # gateway in "# STAT" mỗi 5 s → 15 s không có dòng nào = treo / mất USB
 PROBE_WAIT_S = 1.5
 
@@ -48,8 +51,14 @@ def parse_stat(text):
     return out
 
 
+def in_bootloader(p):
+    return getattr(p, 'vid', None) == GW_VID and (getattr(p, 'pid', None) or 0x8000) < 0x8000
+
+
 def candidate_ports(ports):
-    """Danh sách cổng (serial.tools.list_ports) → tên cổng nên thử: VID 0x239A trước, rồi các cổng USB khác."""
+    """Danh sách cổng (serial.tools.list_ports) → tên cổng nên thử: VID 0x239A trước, rồi các cổng USB khác.
+    Bỏ board đang ở bootloader (đang nạp firmware)."""
+    ports = [p for p in ports if not in_bootloader(p)]
     first = [p.device for p in ports if getattr(p, 'vid', None) == GW_VID]
     rest = [p.device for p in ports if p.device not in first and getattr(p, 'vid', None) is not None]
     return first + rest
@@ -79,12 +88,23 @@ def probe(open_port, device, wait=PROBE_WAIT_S):
             pass
 
 
-def find_gateway(ports, open_port):
-    """(cổng, phiên bản) của gateway đầu tiên trả lời, hoặc (None, None)."""
+def find_gateway(ports, open_port, not_gw=None, now=None):
+    """(cổng, phiên bản) của gateway đầu tiên trả lời, hoặc (None, None).
+    not_gw: {(cổng, số serial): lúc hỏi} các cổng vừa hỏi mà không phải gateway — bỏ qua NOT_GW_RETRY_S giây (không làm phiền
+    Remote / Serial Monitor / Arduino IDE mỗi 2 s).
+    Khoá theo (cổng, số serial USB): cắm board KHÁC vào cùng cổng (ttyACM0) thì hỏi ngay, không chờ."""
+    now = time.monotonic() if now is None else now
+    not_gw = {} if not_gw is None else not_gw
+    serials = {p.device: getattr(p, 'serial_number', None) for p in ports}
     for dev in candidate_ports(ports):
+        key = (dev, serials.get(dev))
+        if now - not_gw.get(key, -1e9) < NOT_GW_RETRY_S:
+            continue
         fw = probe(open_port, dev)
         if fw:
+            not_gw.pop(key, None)
             return dev, fw
+        not_gw[key] = now
     return None, None
 
 
@@ -211,11 +231,12 @@ def main():
     threading.Thread(target=report, daemon=True).start()
 
     last_warn = 0.0
+    not_gw = {}
     while True:                                           # tự tìm / nối lại khi rút-cắm USB, gateway treo
         port = cfg_port
         try:
             if auto:
-                port, fw = find_gateway(serial.tools.list_ports.comports(), open_port)
+                port, fw = find_gateway(serial.tools.list_ports.comports(), open_port, not_gw)
                 if not port:
                     raise OSError('chưa thấy gateway (cổng USB trả lời "# ARS-GW") — cắm gateway, hoặc đóng Serial Monitor đang giữ cổng')
                 log.info('Tìm thấy gateway %s ở %s', fw, port)

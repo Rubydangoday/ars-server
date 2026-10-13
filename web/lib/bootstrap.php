@@ -8,7 +8,7 @@ const LETTERS = 'ABCDEFGHIJ';
 const REJECT_REASONS = [
     'no_session' => 'Lớp chưa bắt đầu buổi', 'unknown_seat' => 'ID không có trong lớp', 'seat_taken' => 'ID đã có máy khác đăng nhập',
     'mac_bound' => 'Máy này đã đăng nhập ID khác', 'not_logged_in' => 'Máy chưa điểm danh', 'id_mismatch' => 'ID trong gói khác ID đã đăng nhập',
-    'q_not_open' => 'Câu chưa mở', 'q_closed' => 'Câu đã đóng', 'late' => 'Hết giờ', 'bad_option' => 'Chữ vượt số lựa chọn',
+    'q_not_open' => 'Câu chưa mở', 'q_closed' => 'Câu đã đóng', 'late' => 'Hết giờ', 'bad_option' => 'Chữ vượt số lựa chọn', 'seq_reused' => 'Remote dùng lại số thứ tự cũ (bấm lại)',
     'no_change' => 'Không cho đổi đáp án', 'malformed' => 'Gói hỏng',
     'mapping_mismatch' => 'Remote không đúng học sinh đã ghép',
     'wrong_link' => 'Sai kiểu kết nối (lớp đang chọn kiểu khác)',

@@ -27,6 +27,10 @@ adapter = hci0
 company_id = 0xFFFF
 ; 1 = phát beacon trạng thái (câu đang mở, điểm danh, xác nhận) về Remote — chỉ Linux/BlueZ; 0 = chỉ nghe
 advertise = 1
+; Chế độ 1 nRF GATT (sudo ars gateway gatt, bridge/ble_gatt.py): tên Remote quảng bá, và MAC Remote (khuyên ghi cố định;
+; xem bằng: ars gatt-probe hoặc python3 bridge/ble_gatt.py --scan). Để trống = tìm theo tên.
+remote_name = ARS_REMOTE_01
+remote_address =
 ; (thử nghiệm radio, xem firmware/TEST_V3_10.md) dừng quét bao lâu để ưu tiên phát ACK, hai lần dừng cách nhau
 ; tối thiểu bao lâu, gộp thay đổi ACK trong bao lâu — mặc định 120 / 400 / 30 ms
 ;ack_exclusive_ms = 120

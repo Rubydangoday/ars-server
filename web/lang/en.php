@@ -2534,4 +2534,5 @@ return [
     // ---- v22: quay lại gateway nRF52840 cắm USB làm mặc định
     'Chưa có gateway: dùng tạm Bluetooth của laptop bằng lệnh' => 'No gateway yet: use the laptop\'s Bluetooth for now with',
     'quay lại gateway' => 'back to the gateway',
+    'Remote dùng lại số thứ tự cũ (bấm lại)' => 'Remote reused an old sequence number (press again)',
 ];

@@ -53,10 +53,14 @@ sleep 1
 cd "$ROOT"
 python3 tests/http_smoke.py >"$W/smoke.json"
 printf '%-24s %s\n' http_smoke "$(python3 -c "import json;print(json.load(open('$W/smoke.json'))['passed'])")"
-for t in ingest_integration ble_scan_unit gateway_codec_test bridge_unit extended_integration v11_integration oauth_integration student_signup_integration i18n_integration tutor_integration; do
+for t in ingest_integration ble_scan_unit gateway_codec_test bridge_unit gatt_unit extended_integration v11_integration oauth_integration student_signup_integration i18n_integration tutor_integration; do
   python3 "tests/$t.py" "$W/smoke.json" >"$W/$t.json"
   printf '%-24s %s\n' "$t" "$(python3 -c "import json;print(json.load(open('$W/$t.json'))['passed'])")"
 done
+# firmware Remote GATT chạy trên máy tính với GPIO/BLE giả (cần g++)
+if command -v g++ >/dev/null; then
+  bash tests/firmware_host/run.sh >"$W/fw_host.txt" 2>&1 && printf '%-24s %s\n' firmware_host_gatt OK || { cat "$W/fw_host.txt"; exit 1; }
+fi
 n=$(grep -ciE 'php (warning|fatal|deprecated)' "$W/php.log" || true)
 echo "Cảnh báo PHP: $n"
 [ "$n" = 0 ]

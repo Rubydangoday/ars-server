@@ -12,17 +12,29 @@ Mỗi giao dịch (loại + seq) trong log Serial được xếp vào một lo�
 
 Đo gói lên (Remote Serial 'u' = 100 gói PROBE; gateway in "PROBE seq=…" vào journal ars-bridge):
   python3 tools/ble_txn_report.py serial.log server.log --probe
+
+Remote chạy pin, không có log Serial — chỉ dùng log server, tự đếm số lần bấm OK:
+  python3 tools/ble_txn_report.py --server-only server.log --presses 50 --seat 2
+  Gateway đã bỏ bản lặp trong một đợt phát, nên mỗi dòng TRÙNG của một seq ≈ một lần Remote PHẢI GỬI LẠI
+  (không nghe được ACK lần đầu). Không đo được độ trễ và lần gửi đầu bị mất hẳn (server chỉ thấy lần gửi lại).
 """
 import argparse
 import re
 from collections import OrderedDict
 
 ap = argparse.ArgumentParser()
-ap.add_argument('serial')
-ap.add_argument('server')
+ap.add_argument('logs', nargs='+', help='serial.log server.log  (--server-only: chỉ server.log)')
 ap.add_argument('--seat', type=int, default=None, help='chỉ xét ghế này trong log server')
 ap.add_argument('--probe', action='store_true', help='đo tỉ lệ gói PROBE gateway nghe được')
+ap.add_argument('--server-only', action='store_true', help='không có log Serial của Remote (Remote chạy pin)')
+ap.add_argument('--presses', type=int, default=None, help='--server-only: số lần bấm OK (ANSWER) đã làm')
 a = ap.parse_args()
+if a.server_only:
+    a.serial, a.server = None, a.logs[0]
+elif len(a.logs) == 2:
+    a.serial, a.server = a.logs
+else:
+    ap.error('cần 2 file: serial.log server.log (hoặc --server-only server.log)')
 
 
 def pct(n, d):
@@ -33,6 +45,49 @@ def quantile(v, q):
     v = sorted(v)
     return v[min(len(v) - 1, int(round(q * (len(v) - 1))))] if v else None
 
+
+if a.server_only:
+    acc, nack, extra, order = set(), {}, {}, []
+    logins = []
+    for line in open(a.server, errors='replace'):
+        m = re.search(r'(NHẬN|TRÙNG)\s+ghế\s*0?(\d+).*?seq=\s*0*(\d+)', line)
+        if m and (a.seat is None or int(m.group(2)) == a.seat):
+            seq = int(m.group(3))
+            if m.group(1) == 'NHẬN':
+                if seq not in acc and seq not in nack:
+                    order.append(seq)
+                acc.add(seq)
+            else:
+                extra[seq] = extra.get(seq, 0) + 1
+            continue
+        m = re.search(r'LOẠI\s+(\S+)\s+ghế\s*0?(\d+)\s+câu\s+(\S+)\s+seq=\s*0*(\d+)', line)
+        if m and m.group(3) != '0' and (a.seat is None or int(m.group(2)) == a.seat):
+            seq = int(m.group(4))
+            if seq not in acc and seq not in nack:
+                order.append(seq)
+            nack[seq] = m.group(1)
+            continue
+        m = re.search(r'ĐIỂM DANH( lại)? ghế\s*0?(\d+)\s+seq=\s*0*(\d+)', line)
+        if m and (a.seat is None or int(m.group(2)) == a.seat):
+            logins.append(int(m.group(3)))
+    n = len(order)
+    if not n:
+        raise SystemExit('Không có dòng NHẬN / LOẠI nào trong log server (đúng ghế? đã mở câu?).')
+    retried = [s for s in order if extra.get(s)]
+    print(f'LOGIN server thấy: {len(logins)} lần (seq {", ".join(map(str, logins[-5:])) or "-"})')
+    print(f'ANSWER server nhận: {n} giao dịch — chấp nhận {len(acc)}, NACK {len(nack)} '
+          f'({", ".join(f"seq {k}: {v}" for k, v in list(nack.items())[:8])}{"…" if len(nack) > 8 else ""})')
+    print(f'Remote phải gửi lại (server thấy cùng seq ≥ 2 lần): {pct(len(retried), n)}   seq: {retried[:20]}')
+    first = (n - len(retried)) / n
+    print(f'ACK lần đầu (ước lượng, chỉ tính giao dịch server thấy): {first:.1%}')
+    ok = first >= 0.95
+    if a.presses:
+        print(f'Server nhận / số lần bấm: {pct(n, a.presses)}   (thiếu {max(0, a.presses - n)} lần: đèn đỏ hết giờ hoặc đếm nhầm)')
+        ok = ok and n / a.presses >= 0.99
+    else:
+        print('(thêm --presses <số lần bấm OK> để tính tỉ lệ server nhận)')
+    print('PASS' if ok else 'FAIL', '(server nhận ≥ 99 % số lần bấm, ACK lần đầu ≥ 95 %; độ trễ cần log Serial)')
+    raise SystemExit(0)
 
 if a.probe:
     sent = [int(m.group(1)) for m in re.finditer(r'DIAG TX PROBE seq=(\d+)', open(a.serial, errors='replace').read())]

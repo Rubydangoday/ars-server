@@ -34,18 +34,25 @@ Bộ cài: Apache + PHP, MariaDB, Mosquitto, Python; bật `ars-ingest`, **`ars-
 ### A3. Nạp firmware (mỗi lần chỉ cắm 1 board)
 | | Gateway | Remote |
 |---|---|---|
-| Trước khi nạp | `sudo systemctl stop ars-bridge` (bridge đang giữ cổng) | — |
+| Trước khi nạp | `sudo systemctl stop ars-bridge` (bridge giữ / hỏi cổng SuperMini) | nên `sudo systemctl stop ars-bridge` như gateway |
 | Mở | `firmware/ARS_gateway_v3_10/ARS_gateway_v3_10.ino` | `firmware/ARS_remote_v3_10/ARS_remote_v3_10.ino` |
 | Upload, rồi Serial Monitor 115200 | `# ARS-GW 3.11`, `# ready…` | `ARS Remote bidirectional V3.11` |
 | Sau đó | đóng Serial Monitor, `sudo systemctl start ars-bridge` | đóng Serial Monitor (hoặc giữ để xem log) |
 
 Upload báo lỗi cổng → chạm RST–GND 2 lần (vào bootloader), chọn lại cổng, Upload lại.
 
+Nạp kiểu kéo thả (UF2), khi Upload vẫn lỗi: Sketch → **Export Compiled Binary** (tạo `build/…/*.ino.hex` trong thư mục sketch), rồi
+```bash
+python3 ~/.arduino15/packages/adafruit/hardware/nrf52/1.7.0/tools/uf2conv/uf2conv.py -c -f 0xADA52840 \
+    -o gateway.uf2 firmware/ARS_gateway_v3_10/build/*/ARS_gateway_v3_10.ino.hex
+```
+chạm RST–GND 2 lần → chép `gateway.uf2` vào ổ `NICENANO` (board tự khởi động lại khi chép xong).
+
 ### A4. Tạo lớp trên web
 `http://localhost/gv` → tạo tài khoản → **Lớp học** → tạo lớp với **mã lớp (room)** = `[gateway] room` trong `/opt/ars-server/config.ini` (mặc định 1) → thêm học sinh (số ghế 1–99) → bộ câu hỏi.
 
 ### A5. Đặt ghế cho Remote
-Remote mới hiện `--`: **MODE** → gõ số ghế → **OK** (Remote LOGIN ngay). Room khác 1: MODE hai lần → gõ room → OK → gõ ghế → OK. Ghế/room lưu trong flash.
+Remote mới hiện `Gh` ↔ `--` (đèn xanh nháy chậm = đang nhập ghế): gõ số ghế → **OK** (Remote LOGIN ngay). `Ph` + đèn đỏ nháy = đang nhập phòng. Chữ cái nhấp nháy = đã chọn đáp án, chưa gửi. Bảng đầy đủ: `firmware/ARS_remote_v3_10/README.md`. Room khác 1: MODE hai lần → gõ room → OK → gõ ghế → OK. Ghế/room lưu trong flash.
 
 ---
 
@@ -76,7 +83,7 @@ sudo bash deploy/install_ubuntu.sh         # chạy migration, chép code, khở
 ```
 Chỉ đổi code (không có migration mới):
 ```bash
-sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
 sudo systemctl restart apache2 ars-ingest ars-bridge
 ```
 Có thay đổi trong `firmware/` → nạp lại gateway và/hoặc Remote (mục A3).
@@ -93,6 +100,13 @@ journalctl -u ars-ingest -u ars-bridge -f --since now | tee server.log
 python3 tools/ble_txn_report.py serial.log server.log --seat <ghế>
 ```
 Đạt: server nhận ≥ 99 %, có kết quả ≥ 99 %, ACK lần đầu ≥ 95 %, độ trễ P95 < 300 ms, 0 đèn xanh nhầm.
+**Remote chạy pin (không cắm máy tính)** — chỉ cần log server, tự đếm số lần bấm OK:
+```bash
+journalctl -u ars-ingest -u ars-bridge -f --since now | tee server.log      # bấm 50 lần, rồi Ctrl+C
+python3 tools/ble_txn_report.py --server-only server.log --presses 50 --seat <ghế>
+```
+Cho biết: server nhận bao nhiêu / 50, bao nhiêu lần Remote phải gửi lại (≈ không nghe được ACK lần đầu), NACK và lý do. Không đo được độ trễ — muốn số `dt` thì cắm Remote vào USB (cổng thứ 2 hoặc hub) cho một lượt đo.
+
 Đo riêng gói lên: Remote Serial gõ `u` (100 gói PROBE) → `python3 tools/ble_txn_report.py serial.log server.log --probe` (≥ 99 %).
 
 ---
@@ -109,7 +123,7 @@ python3 tools/ble_txn_report.py serial.log server.log --seat <ghế>
 | Remote đỏ `NACK … reason=…` | lý do trên Serial Remote | `NOT_LOGGED_IN`: MODE → OK để LOGIN lại · `QUESTION_NOT_OPEN`/`QUESTION_CLOSED`: GV chưa mở / đã đóng câu · `SEAT_TAKEN`: GV bấm ô ghế để giải phóng · `NO_SESSION`: chưa bấm Bắt đầu |
 | Remote báo `LOCAL REJECT` | — | Chọn chữ vượt số lựa chọn của câu (ví dụ E khi câu có A–D) — đúng thiết kế |
 | Serial Remote `ADV START FAIL` | — | Nạp lại firmware Remote; còn lỗi → báo kèm log |
-| Arduino IDE nạp lỗi / cổng biến mất | `ls /dev/ttyACM*` | `sudo systemctl stop ars-bridge` trước khi nạp gateway; vào bootloader bằng RST–GND 2 lần |
+| Arduino IDE nạp lỗi giữa chừng (`Timed out waiting for acknowledgement`, `No data received on serial port`) | `systemctl is-active ars-bridge` | `sudo systemctl stop ars-bridge` rồi nạp lại (bridge cũ hỏi cổng mỗi 2 s, chen vào lúc nạp; bản mới bỏ qua board đang ở bootloader). Vẫn lỗi: RST–GND 2 lần rồi nạp, hoặc nạp UF2 (mục A3) |
 | Web không vào được | `ars status` | `sudo systemctl restart apache2`; xem `ars links` |
 
 Tạm thời không có gateway: `sudo ars gateway ble` (laptop thu bằng Bluetooth của nó — chậm và kém ổn định hơn), quay lại: `sudo ars gateway usb`.

@@ -31,7 +31,7 @@ id -u $SVC_USER >/dev/null 2>&1 || useradd --system --home "$DST" --shell /usr/s
 usermod -aG dialout,bluetooth $SVC_USER       # cổng USB gateway (/dev/ttyACM*) · Bluetooth của máy (ars-ble, tuỳ chọn)
 getent group $SVC_USER >/dev/null && usermod -aG $SVC_USER www-data
 mkdir -p "$DST"
-rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' "$SRC"/ "$DST"/
+rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .git --exclude '__pycache__' "$SRC"/ "$DST"/
 chown -R root:root "$DST"; chmod -R a+rX "$DST"
 
 say "3/7 Khởi động MariaDB và Mosquitto"
@@ -113,13 +113,19 @@ else apachectl -k stop 2>/dev/null || true; sleep 1; apachectl -k start; fi
 
 say "6/7 Dịch vụ ingest (luôn chạy) và bridge (gateway nRF52840 cắm USB)"
 if [ $HAS_SYSTEMD = 1 ]; then
-    cp "$DST"/deploy/ars-ingest.service "$DST"/deploy/ars-ble.service "$DST"/deploy/ars-bridge.service /etc/systemd/system/
+    cp "$DST"/deploy/ars-ingest.service "$DST"/deploy/ars-ble.service "$DST"/deploy/ars-bridge.service "$DST"/deploy/ars-gatt.service /etc/systemd/system/
     systemctl daemon-reload
     systemctl enable -q bluetooth 2>/dev/null || true
     systemctl enable -q ars-ingest
     systemctl restart ars-ingest
-    if systemctl is-enabled -q ars-ble 2>/dev/null && [ -f "$DST/.gateway-ble" ]; then systemctl restart ars-ble   # đã chọn Bluetooth laptop
-    else systemctl disable -q --now ars-ble 2>/dev/null || true; systemctl enable -q ars-bridge; systemctl restart ars-bridge; fi
+    # chế độ đã chọn bằng "ars gateway …" được giữ qua mỗi lần cài lại; mặc định 2 nRF (gateway USB)
+    if [ -f "$DST/.gateway-gatt" ]; then
+        systemctl disable -q --now ars-bridge ars-ble 2>/dev/null || true; systemctl enable -q ars-gatt; systemctl restart ars-gatt
+    elif systemctl is-enabled -q ars-ble 2>/dev/null && [ -f "$DST/.gateway-ble" ]; then
+        systemctl disable -q --now ars-gatt 2>/dev/null || true; systemctl restart ars-ble
+    else
+        systemctl disable -q --now ars-ble ars-gatt 2>/dev/null || true; systemctl enable -q ars-bridge; systemctl restart ars-bridge
+    fi
 else
     echo "   (không có systemd) tự chạy: sudo -u $SVC_USER python3 $DST/ingest/ingest.py &"
 fi

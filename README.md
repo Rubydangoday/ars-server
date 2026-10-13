@@ -8,6 +8,8 @@ Hướng dẫn sử dụng cho giáo viên, học sinh, phụ huynh và lập tr
 
 Cài đặt, nạp firmware, chạy mỗi buổi và xử lý sự cố hệ thống 2 nRF (Remote + gateway USB): **[HUONG_DAN_2NRF.md](HUONG_DAN_2NRF.md)**
 
+Chế độ 1 nRF — Remote kết nối BLE GATT thẳng với Bluetooth laptop, không cần gateway (`sudo ars gateway gatt`): **[HUONG_DAN_1NRF_GATT.md](HUONG_DAN_1NRF_GATT.md)**
+
 Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi tiết) · [UPGRADE_V10.md](UPGRADE_V10.md) (LMS, phụ huynh) · [UPGRADE_V11.md](UPGRADE_V11.md) (trường, Cloud, thi đua, Zalo/SMS) · [UPGRADE_V12.md](UPGRADE_V12.md) (đăng nhập Google, học sinh tự đăng ký) · [tests/README.md](tests/README.md)
 
 ---
@@ -56,10 +58,13 @@ ars-server/
 │
 ├── firmware/
 │   ├── ARS_remote_v3_10/         Firmware Remote nRF52840 (Arduino, Adafruit nRF52): bàn phím, LED 2 số, BLE, nhập ghế bằng MODE
+│   ├── ARS_remote_gatt/          Firmware Remote chế độ 1 nRF: kết nối BLE GATT (NUS) với laptop, kết quả chính xác (bản V3.11 GATT của nhóm)
+│   ├── GATT_PROTOCOL_V3_11.md    Giao thức chế độ GATT
 │   ├── ARS_gateway_v3_10/        Firmware gateway nRF52840 SuperMini cắm USB: quét Remote → JSON, lệnh → beacon, lọc bản lặp
 │   ├── PROTOCOL_V3_10.md         Giao thức BLE + lịch radio + so sánh V3.9 → V3.10
 │   └── TEST_V3_10.md             Quy trình test radio, tiêu chí PASS/FAIL
 ├── bridge/
+│   ├── ble_gatt.py, gatt_protocol.py  Chế độ 1 nRF GATT: một kết nối BLE tới Remote ⇄ MQTT, ghép kết quả theo mã yêu cầu
 │   ├── bridge.py                 Gateway nRF52840 USB serial ⇄ MQTT. Tự nối lại khi rút/cắm USB. Báo gw/status mỗi 5 s
 │   ├── blecodec.py               Định dạng byte trên sóng Remote ⇄ gateway/laptop (mã hoá / giải mã, tham chiếu cho firmware gateway, dùng cho test)
 │   └── ble_scan.py               (tuỳ chọn, khi chưa có gateway) Bluetooth laptop ⇄ MQTT qua BlueZ
@@ -330,7 +335,7 @@ Link Internet https: `sudo ars public on` (Tailscale Funnel).
 
 **Cập nhật code đã cài:**
 ```bash
-sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
 sudo systemctl restart apache2 ars-ingest ars-bridge
 ```
 Có migration mới (`db/migrate_00X_*.sql`) thì chạy trước: `mysql -u root -p ars < db/migrate_00X_….sql`.

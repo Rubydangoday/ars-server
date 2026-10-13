@@ -4,12 +4,12 @@ DST=/opt/ars-server
 ini() { sudo awk -v s="[$1]" -v k="$2" '$0==s{f=1;next} /^\[/{f=0} f && $1==k {sub(/^[^=]*= */,""); print; exit}' $DST/config.ini 2>/dev/null; }
 case "${1:-}" in
   status)
-    for s in apache2 mariadb mosquitto bluetooth ars-ingest ars-ble ars-bridge ars-mdns; do
+    for s in apache2 mariadb mosquitto bluetooth ars-ingest ars-bridge ars-gatt ars-ble ars-mdns; do
       printf '%-12s %s\n' "$s" "$(systemctl is-active $s 2>/dev/null || echo '?')"
     done
     ;;
-  logs)   journalctl -u ars-ingest -u ars-ble -u ars-bridge -f -n 50 ;;
-  restart) svc=ars-bridge; systemctl is-enabled -q ars-ble 2>/dev/null && svc=ars-ble
+  logs)   journalctl -u ars-ingest -u ars-bridge -u ars-gatt -u ars-ble -f -n 50 ;;
+  restart) svc=ars-bridge; systemctl is-enabled -q ars-ble 2>/dev/null && svc=ars-ble; systemctl is-enabled -q ars-gatt 2>/dev/null && svc=ars-gatt
     sudo systemctl restart ars-ingest $svc && echo "đã khởi động lại ingest + $svc" ;;
   ble)    # in các gói quảng bá Bluetooth máy chủ nghe được (kiểm tra firmware Remote); dừng dịch vụ ars-ble trong lúc xem
     was=0; systemctl is-active -q ars-ble 2>/dev/null && was=1
@@ -49,12 +49,21 @@ PY
         echo "Đã áp dụng ($2 ${3:-} ${4:-}); bluetooth (và ars-ble nếu đang dùng) đã khởi động lại. Xem: ars ble-tune show" ;;
       *) echo "Dùng: ars ble-tune show | scan <chu kỳ ms> <cửa sổ ms> | rotate <ms> | reset" ;;
     esac ;;
-  gateway) # chọn cách thu sóng: ars gateway usb (gateway nRF52840 cắm USB, mặc định) | ble (Bluetooth của máy, không cần gateway)
+  gateway) # chọn cách thu sóng: usb (2 nRF: gateway cắm USB, mặc định) | gatt (1 nRF: Remote kết nối GATT với Bluetooth laptop)
+           #                   | ble (1 nRF: laptop quét quảng bá — cũ). Mỗi chế độ cần đúng firmware Remote (HUONG_DAN_1NRF_GATT.md)
+    off() { for s in "$@"; do sudo systemctl disable --now $s 2>/dev/null; done; sudo rm -f $DST/.gateway-ble $DST/.gateway-gatt $DST/.gateway-usb; }
     case "${2:-}" in
-      usb) sudo systemctl disable --now ars-ble; sudo systemctl enable --now ars-bridge; sudo rm -f $DST/.gateway-ble $DST/.gateway-usb; echo "Đang dùng gateway nRF52840 cắm USB (ars-bridge)" ;;
-      ble) sudo systemctl disable --now ars-bridge; sudo systemctl enable --now ars-ble; sudo touch $DST/.gateway-ble; echo "Đang dùng Bluetooth của máy chủ (ars-ble)" ;;
-      *) systemctl is-enabled -q ars-ble 2>/dev/null && echo "ble (ars-ble)" || echo "usb (ars-bridge)"; echo "Đổi: ars gateway usb | ble" ;;
+      usb)  off ars-ble ars-gatt;    sudo systemctl enable --now ars-bridge; echo "Đang dùng gateway nRF52840 cắm USB (ars-bridge) — Remote: firmware/ARS_remote_v3_10" ;;
+      gatt) off ars-bridge ars-ble;  sudo touch $DST/.gateway-gatt; sudo systemctl enable --now ars-gatt; echo "Đang dùng 1 nRF qua BLE GATT (ars-gatt) — Remote: firmware/ARS_remote_gatt" ;;
+      ble)  off ars-bridge ars-gatt; sudo touch $DST/.gateway-ble; sudo systemctl enable --now ars-ble; echo "Đang dùng Bluetooth của máy chủ quét quảng bá (ars-ble) — Remote: firmware/ARS_remote_v3_10" ;;
+      *) if systemctl is-enabled -q ars-gatt 2>/dev/null; then echo "gatt (ars-gatt)"; elif systemctl is-enabled -q ars-ble 2>/dev/null; then echo "ble (ars-ble)"; else echo "usb (ars-bridge)"; fi
+         echo "Đổi: ars gateway usb | gatt | ble" ;;
     esac ;;
+  gatt-probe) # đo riêng đường BLE GATT: N lần PING/PONG laptop ⇄ Remote (dừng ars-gatt trong lúc đo — chỉ 1 kết nối)
+    was=0; systemctl is-active -q ars-gatt 2>/dev/null && was=1
+    sudo systemctl stop ars-gatt
+    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/bridge/ble_gatt.py --config $DST/config.ini --probe "${2:-100}"
+    [ $was = 1 ] && sudo systemctl start ars-gatt ;;
   sim)    # chạy thử không cần phần cứng: ars sim [số Remote] [room] — giả lập Remote nRF52840 ở tầng MQTT
     sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/tools/sim_clickers.py --room "${3:-1}" -n "${2:-30}" --duration 300 ;;
   links)  # in các link cố định cho giáo viên / học sinh
@@ -123,5 +132,5 @@ print("lỗi      :", bad or "không")'
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway usb|ble | gw | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway usb|gatt|ble | gw | gatt-probe [n] | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac

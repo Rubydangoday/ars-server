@@ -27,6 +27,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'common'))
 import arscfg  # noqa: E402
+import pymysql  # noqa: E402
 
 log = logging.getLogger('ingest')
 LETTERS = 'ABCDEFGHIJ'
@@ -52,6 +53,7 @@ REJECT_STATUS = {
     'mac_bound': 12,
     'wrong_link': 13,
     'malformed': 14,
+    'seq_reused': 15,
 }
 STATUS_OTHER = 255
 
@@ -127,6 +129,26 @@ class Ingest:
         with self.db.cursor() as c:
             return c.execute(sql, args)
 
+    def publish_gatt_result(self, pkt, status=0):
+        """Chế độ 1 nRF (GATT, bridge/ble_gatt.py): kết quả chính xác, không giữ lại, cho ĐÚNG yêu cầu GATT này.
+
+        Chỉ gọi sau khi đã ghi DB (autocommit), sau một bản lặp đã kiểm chứng, hoặc khi từ chối. Gói không có
+        gatt_request (gateway USB, Bluetooth laptop quảng bá) không bị ảnh hưởng. (Theo bản V3.11 GATT của nhóm.)
+        """
+        token = pkt.get('gatt_request')
+        if (pkt.get('transport') != 'gatt' or not isinstance(token, str)
+                or len(token) != 32 or any(c not in '0123456789abcdef' for c in token)):
+            return
+        try:
+            result = {k: pkt[k] for k in ('room', 'mac', 'type', 'id', 'q', 'seq', 'ans')}
+            room = int(result['room'])
+            if not 1 <= room <= 99:
+                return
+        except (KeyError, TypeError, ValueError):
+            return
+        result.update(gatt_request=token, status=int(status))
+        self.client.publish(f'ars/{room}/result/gatt', json.dumps(result), qos=1, retain=False)
+
     def reject(self, room, session_id, pkt, reason, raw):
         self.stats['rej'] += 1
 
@@ -134,6 +156,7 @@ class Ingest:
         # exact result beacon. This stops the Remote from retrying until timeout.
         # Repeated copies/retries intentionally re-arm the same NACK.
         self.remember_reject_result(room, pkt, reason)
+        self.publish_gatt_result(pkt, REJECT_STATUS.get(reason, STATUS_OTHER))
 
         # 5 bản lặp của cùng một lần bấm chỉ ghi 1 dòng vào bảng rejected
         key = (pkt.get('mac'), pkt.get('seq'), pkt.get('type'), reason)
@@ -310,6 +333,7 @@ class Ingest:
                 # A LOGIN can also mean the Remote rebooted. Replacing the seat's record with the
                 # LOGIN result also drops an old ANSWER ACK, so a recycled 8-bit seq cannot be falsely confirmed.
                 self.remember_login(room, seat, int(pkt['seq']) & 0xFF)
+                self.publish_gatt_result(pkt)
                 self.dirty.add(room)
                 log.info('ĐIỂM DANH lại ghế %02d seq=%03d %s', seat, int(pkt['seq']) & 0xFF, mac)
                 return self.dup(mac)                     # đã điểm danh rồi (gói lặp / gửi lại / Remote khởi động lại)
@@ -321,6 +345,7 @@ class Ingest:
                (sid, seat, mac))
         self.remember_login(room, seat, int(pkt['seq']) & 0xFF)
         self.x('UPDATE devices SET last_seat=%s WHERE mac=%s', (seat, mac))
+        self.publish_gatt_result(pkt)
         self.stats['ok'] += 1
         self.dirty.add(room)
         log.info('ĐIỂM DANH ghế %02d seq=%03d %s', seat, int(pkt['seq']) & 0xFF, mac)
@@ -353,6 +378,7 @@ class Ingest:
             # Same transaction reached the server a few seconds earlier. Re-advertise
             # its exact ACK so a Remote that missed the first downlink can stop retrying.
             self.remember_ack(room, seat, sq['position'], seq, prior['answer'])
+            self.publish_gatt_result(pkt)
             log.info('TRÙNG  ghế %02d câu %d seq=%03d → %s rssi=%s',
                      seat, sq['position'], seq, prior['answer'], str(rssi if rssi is not None else '?'))
             return self.dup(mac)                         # repeated copy/retry of the same OK press
@@ -365,10 +391,17 @@ class Ingest:
         if not ses['allow_change'] and self.q('SELECT 1 FROM responses WHERE session_q_id=%s AND seat_no=%s',
                                               (sq['id'], seat), one=True):
             return self.reject(room, sid, pkt, 'no_change', raw)
-        self.x('INSERT INTO responses (session_q_id, seat_no, mac, seq, answer, rssi, received_at) '
-               'VALUES (%s,%s,%s,%s,%s,%s,NOW(3))', (sq['id'], seat, mac, seq, ans, rssi))
+        try:
+            self.x('INSERT INTO responses (session_q_id, seat_no, mac, seq, answer, rssi, received_at) '
+                   'VALUES (%s,%s,%s,%s,%s,%s,NOW(3))', (sq['id'], seat, mac, seq, ans, rssi))
+        except pymysql.err.IntegrityError:
+            # uq_resp (câu, MAC, seq) đã có từ HƠN DUP_WINDOW_S trước: seq 8 bit quay vòng, hoặc Remote khởi động lại
+            # ra trùng seq. Trước đây: ngoại lệ, không có kết quả nào → Remote hết giờ, mất lượt. Nay: NACK chính xác,
+            # Remote báo đỏ; lần bấm sau dùng seq mới và được nhận.
+            return self.reject(room, sid, pkt, 'seq_reused', raw)
         self.stats['ok'] += 1
         self.remember_ack(room, seat, sq['position'], seq, ans)
+        self.publish_gatt_result(pkt)
         log.info('NHẬN   ghế %02d câu %d seq=%03d → %s rssi=%s',
                  seat, sq['position'], seq, ans, str(rssi if rssi is not None else '?'))
 

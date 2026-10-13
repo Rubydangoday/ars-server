@@ -7,7 +7,7 @@
 ```bash
 cd ~/Downloads/ars-server                       # repo đã có V3.10
 sudo bash deploy/install_ubuntu.sh              # hoặc chỉ chép code:
-sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
 sudo systemctl restart ars-ingest ars-bridge     # (chế độ Bluetooth laptop: ars-ble)
 ars status                                      # ars-ingest, ars-bridge: active
 ```

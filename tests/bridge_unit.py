@@ -72,6 +72,27 @@ check(bridge.probe(opener({'/dev/ttyACM0': 'busy'}), '/dev/ttyACM0', 0.1) is Non
       'Busy port (Serial Monitor / Arduino IDE holding it) is skipped without error')
 check(bridge.find_gateway(ports[:1] + ports[2:3], opener(table)) == (None, None), 'No gateway plugged in → (None, None)')
 
+boot = [port('/dev/ttyACM0', 0x239A)]
+boot[0].pid = 0x00B3                                   # nice!nano bootloader: Arduino IDE đang nạp
+opened.clear()
+check(bridge.candidate_ports(boot) == [] and bridge.find_gateway(boot, opener({'/dev/ttyACM0': gateway_reply})) == (None, None)
+      and not opened, 'Board in bootloader (PID < 0x8000, firmware upload running) is never opened')
+seen_not_gw = {}
+bridge.find_gateway(ports, opener(table), seen_not_gw, now=1000.0)
+opened.clear()
+table['/dev/ttyACM1'] = remote_reply                   # gateway rút ra
+check(bridge.find_gateway(ports, opener(table), seen_not_gw, now=1010.0) == (None, None) and '/dev/ttyACM0' not in opened,
+      'A port that answered "not a gateway" is not probed again for NOT_GW_RETRY_S (Remote / Serial Monitor left alone)')
+table['/dev/ttyACM0'] = gateway_reply                  # nạp firmware gateway vào board ở ttyACM0
+check(bridge.find_gateway(ports, opener(table), seen_not_gw, now=1000.0 + bridge.NOT_GW_RETRY_S + 1)[0] == '/dev/ttyACM0',
+      'After NOT_GW_RETRY_S the port is probed again (board re-flashed as gateway is found)')
+swapped = [port('/dev/ttyACM0', 0x239A)]
+swapped[0].serial_number = 'D52BED96C6CBC809'          # rút Remote, cắm gateway vào đúng cổng đó
+table2 = {'/dev/ttyACM0': gateway_reply}
+recent = {('/dev/ttyACM0', '896425C113102C01'): 5000.0}  # Remote vừa được hỏi ở ttyACM0
+check(bridge.find_gateway(swapped, opener(table2), recent, now=5001.0)[0] == '/dev/ttyACM0',
+      'A different board (new USB serial number) on the same ttyACM path is probed at once, not after 60 s')
+
 # ---- xử lý dòng ----
 sent = []
 link = bridge.GatewayLink(1, lambda t, p: sent.append((t, json.loads(p))))

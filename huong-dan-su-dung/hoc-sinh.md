@@ -26,14 +26,26 @@ Remote có màn hình 2 số, đèn đỏ/xanh và 14 phím:
 | **OK** | Gửi (điểm danh hoặc đáp án) |
 | **MODE** | Nhập số ghế (bấm MODE hai lần: nhập room) |
 
+**Nhìn màn hình và đèn để biết Remote đang ở chế độ nào:**
+
+| Màn hình | Đèn | Đang ở chế độ |
+|---|---|---|
+| Số đứng yên, ví dụ `03` | tắt | Bình thường: đang ở **câu 3** |
+| `Gh` rồi đến số (hoặc `--`), lặp lại | **xanh** nháy chậm | **Nhập số ghế** (vừa bấm MODE) |
+| `Ph` rồi đến số, lặp lại | **đỏ** nháy chậm | **Nhập phòng (room)** (bấm MODE lần nữa) |
+| Một **chữ cái nhấp nháy** ở ô trái: `A`, `b`, `C`, `d`, `E`, `F`, `G`, `H`, `I`, `J` | tắt | **Đã chọn đáp án, CHƯA gửi** — bấm OK |
+| Chữ cái **đứng yên** | tắt | Đang gửi, chờ máy chủ |
+| Quay về số câu | **xanh** chớp | Máy chủ đã nhận đáp án |
+| — | **đỏ** chớp | Bị từ chối hoặc không liên lạc được (chữ cái nhấp nháy lại = bấm OK để gửi lại) |
+
 **Điểm danh (đầu giờ)**
 1. Gạt công tắc để bật Remote. Remote nhớ số ghế của lần trước và tự điểm danh lại.
-2. Lần đầu (màn hình hiện `--`) hoặc khi đổi chỗ: bấm **MODE**, gõ **số ghế** (thầy cô cho biết, 1–99), bấm **OK**. Bấm MODE rồi OK ngay (không gõ) là điểm danh lại với số ghế cũ.
+2. Lần đầu (màn hình hiện `Gh` / `--`, đèn xanh nháy) hoặc khi đổi chỗ: bấm **MODE**, gõ **số ghế** (thầy cô cho biết, 1–99), bấm **OK**. Bấm MODE rồi OK ngay (không gõ) là điểm danh lại với số ghế cũ.
 3. **Đèn xanh** nghĩa là máy chủ đã nhận, bạn đã điểm danh. Lớp dùng room khác 1: bấm MODE hai lần, gõ room thầy cô cho, OK, rồi gõ số ghế, OK.
 
 **Trả lời câu hỏi**
 1. Khi thầy cô bấm *Mở câu*, màn hình Remote hiện số câu.
-2. Bấm phím đáp án (ví dụ `2/B` để chọn B), rồi bấm **OK**.
+2. Bấm phím đáp án (ví dụ `2/B` để chọn B) — màn hình hiện chữ `b` nhấp nháy — rồi bấm **OK**.
 3. **Đèn xanh** nghĩa là đáp án đã được nhận. Nếu thầy cô cho phép đổi đáp án, bạn chọn lại và bấm **OK** trước khi câu đóng.
 
 **Lưu ý**

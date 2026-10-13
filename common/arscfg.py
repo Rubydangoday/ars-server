@@ -43,9 +43,22 @@ def mask64_hex(positions):
 
 
 def mqtt_client(client_id, clean_session=True):
-    """Tạo client paho-mqtt chạy được cả bản 1.x và 2.x."""
+    """Tạo client paho-mqtt chạy được cả bản 1.x và 2.x.
+
+    Bật TCP_NODELAY: ingest gửi 2 bản tin nhỏ liền nhau cho mỗi gói (ACKS + kết quả GATT); không có NODELAY thì
+    thuật toán Nagle giữ bản tin thứ hai tới khi bản đầu được ACK (ACK trễ ~40 ms) → đo được ~40 ms chờ thừa
+    mỗi giao dịch. (Mosquitto: set_tcp_nodelay true trong deploy/mosquitto-ars.conf, cho chiều broker → client.)"""
+    import socket
     import paho.mqtt.client as mqtt
     try:
-        return mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=clean_session)
+        c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=clean_session)
     except AttributeError:
-        return mqtt.Client(client_id=client_id, clean_session=clean_session)
+        c = mqtt.Client(client_id=client_id, clean_session=clean_session)
+
+    def nodelay(client, userdata, sock):
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):
+            pass                                  # WebSocket / socket không phải TCP: bỏ qua
+    c.on_socket_open = nodelay
+    return c

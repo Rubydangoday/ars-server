@@ -138,6 +138,7 @@ static const char* resultStatusName(uint8_t status) {
         case 12: return "MAC_BOUND";
         case 13: return "WRONG_LINK";
         case 14: return "MALFORMED";
+        case 15: return "SEQ_REUSED";
         default: return "SERVER_REJECT";
     }
 }
@@ -174,9 +175,21 @@ static UiMode uiMode = UI_NORMAL;
 static uint8_t entryValue = 0;
 static bool entryTyped = false;
 
+// Mỗi chế độ một dấu hiệu (display.h): nhập GHẾ = "Gh" ↔ số + đèn xanh nháy chậm,
+// nhập PHÒNG = "Ph" ↔ số + đèn đỏ nháy chậm.
+static constexpr uint16_t ENTRY_LED_ON_MS = 120;
+static constexpr uint16_t ENTRY_LED_PERIOD_MS = 1000;
+
 static void showEntry() {
-    if (!entryTyped && entryValue == 0) displaySetDashes();
-    else displaySetNumber(entryValue);
+    const bool room = uiMode == UI_ENTER_ROOM;
+    displaySetEntry(room ? 1 : 0, entryTyped || entryValue != 0, entryValue);
+    statusLedPattern(room ? STATUS_RED : STATUS_GREEN, ENTRY_LED_ON_MS, ENTRY_LED_PERIOD_MS);
+}
+
+static void leaveEntry() {
+    uiMode = UI_NORMAL;
+    statusLedPatternOff();
+    displaySetNumber(currentQuestion);
 }
 
 // uint8_t parameter: the Arduino builder puts auto-prototypes above the enum declaration.
@@ -298,6 +311,7 @@ static void beginAnswer() {
     pending.attempts = 0;
     pending.firstTxMs = millis();
     retryBackoffArmed = false;
+    displaySetAnswer(selectedAnswer, false);     // chữ cái đứng yên = đang gửi
 
     statusLedSet(STATUS_OFF);
     transmitPending(false);
@@ -431,6 +445,8 @@ static void processRetry() {
     if (pending.attempts >= MAX_ATTEMPTS) {
         Serial.print("ACK TIMEOUT: server did not confirm");
         printTiming();
+        // ANSWER hết giờ: chữ cái nhấp nháy lại = chưa gửi được, bấm OK để gửi lại
+        if (pending.kind == PENDING_ANSWER && selectedAnswer) displaySetAnswer(selectedAnswer, true);
         pending.kind = PENDING_NONE;
         retryBackoffArmed = false;
         statusLedFlash(STATUS_RED, 900);
@@ -478,9 +494,8 @@ static void handleEntryKey(KeyId key) {
             startEntry(uiMode == UI_ENTER_SEAT ? UI_ENTER_ROOM : UI_ENTER_SEAT);
             break;
         case KEY_LEFT:                               // cancel
-            uiMode = UI_NORMAL;
+            leaveEntry();
             Serial.println("Entry cancelled");
-            displaySetNumber(currentQuestion);
             if (gSeat == 0) startEntry(UI_ENTER_SEAT);
             break;
         case KEY_OK:
@@ -503,8 +518,7 @@ static void handleEntryKey(KeyId key) {
                 ArsBle::setIdentity(gRoom, gSeat);
                 Serial.print("Seat saved: ");
                 Serial.println(gSeat);
-                uiMode = UI_NORMAL;
-                displaySetNumber(currentQuestion);
+                leaveEntry();
                 beginLogin();                        // OK without typing = LOGIN again (old MODE behaviour)
             }
             break;
@@ -539,7 +553,7 @@ static void handleKey(KeyId key) {
         selectedAnswer = candidate;
         Serial.print("Selected answer: ");
         Serial.println(answerLetter(selectedAnswer));
-        displaySetNumber(selectedAnswer); // temporary A..J code 01..10
+        displaySetAnswer(selectedAnswer, true);  // chữ cái nhấp nháy = đã chọn, chưa gửi (bấm OK)
         return;
     }
 
@@ -585,21 +599,32 @@ static void handleKey(KeyId key) {
     }
 }
 
+static uint32_t hardwareRandom32() {
+    NRF_RNG->CONFIG = RNG_CONFIG_DERCEN_Msk;      // bias correction
+    NRF_RNG->EVENTS_VALRDY = 0;
+    NRF_RNG->TASKS_START = 1;
+    uint32_t v = 0;
+    for (uint8_t i = 0; i < 4; ++i) {
+        const uint32_t t0 = micros();
+        while (!NRF_RNG->EVENTS_VALRDY && (uint32_t)(micros() - t0) < 2000) {}
+        NRF_RNG->EVENTS_VALRDY = 0;
+        v = (v << 8) | (NRF_RNG->VALUE & 0xFF);
+    }
+    NRF_RNG->TASKS_STOP = 1;
+    return v;
+}
+
 void setup() {
     nrf_gpio_cfg_output(BoardPins::EXT_VCC);
     nrf_gpio_pin_set(BoardPins::EXT_VCC);
 
     Serial.begin(115200);
-    const uint32_t serialWaitStart = millis();
-    while (!Serial && (uint32_t)(millis() - serialWaitStart) < 3000) {
-        delay(10);
-    }
-
     displayBegin();
     statusLedBegin();
     keypadBegin();
 
-    // Proven hardware self-test.
+    // Proven hardware self-test — ngay khi bật nguồn: "88" + đỏ 0,5 s + xanh 0,5 s.
+    // (V3.10 chờ cổng Serial tới 3 s TRƯỚC bước này → chạy pin thì màn hình và đèn tối 3 s sau reset.)
     displaySetNumber(88);
     statusLedSet(STATUS_RED);
     uint32_t t0 = millis();
@@ -612,14 +637,22 @@ void setup() {
     statusLedSet(STATUS_OFF);
     displaySetNumber(currentQuestion);
 
+    // Chỉ khi đang cắm USB (có VBUS) mới chờ máy tính mở cổng Serial — tối đa 2 s, để log khởi động không mất.
+    // Chạy pin: không chờ.
+    if (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) {
+        const uint32_t serialWaitStart = millis();
+        while (!Serial && (uint32_t)(millis() - serialWaitStart) < 2000) displayUpdate();
+    }
+
     Serial.println();
     Serial.println("ARS Remote bidirectional V3.11");
     Serial.println("BLE: TX burst <=150 ms (scan on, stops at result) + ACK listen 1000 ms + exact ACK/NACK (LOGIN too) + backoff");
     Serial.println("GPIO: physical nRF52840 pins via nrf_gpio");
 
-    // Per-device pseudo-random seed for retry backoff. Different remotes have
-    // different DEVICEID values, so simultaneous retries spread out naturally.
-    randomSeed(static_cast<uint32_t>(micros()) ^ NRF_FICR->DEVICEID[0] ^ NRF_FICR->DEVICEID[1]);
+    // Seed from the nRF52840 hardware RNG (thermal noise) — read BEFORE the SoftDevice owns the RNG.
+    // V3.10 used micros() ^ DEVICEID: without the Serial wait the boot time is identical every reset,
+    // so every reboot restarted at the SAME seq (field log: LOGIN seq=104 after each reset).
+    randomSeed(hardwareRandom32() ^ NRF_FICR->DEVICEID[0] ^ NRF_FICR->DEVICEID[1]);
     seqNo = static_cast<uint8_t>(random(256));      // random start: a reboot rarely reuses a recent seq
 
     loadIdentity();

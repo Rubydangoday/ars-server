@@ -205,7 +205,7 @@ sudo bash deploy/install_ubuntu.sh   # cài mới hoặc cập nhật (giữ con
 ```
 Cập nhật nhanh khi chỉ đổi code:
 ```bash
-sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
 sudo systemctl restart apache2 ars-ingest ars-bridge
 ```
 
