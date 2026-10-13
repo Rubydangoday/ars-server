@@ -19,12 +19,23 @@ HAS_SYSTEMD=0; [ -d /run/systemd/system ] && HAS_SYSTEMD=1
 
 say "1/7 Cài gói (Apache + PHP, MariaDB, Mosquitto, Python)"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq apache2 libapache2-mod-php php-cli php-mysql php-zip php-xml php-mbstring php-curl poppler-utils \
-    mariadb-server mosquitto mosquitto-clients avahi-daemon avahi-utils \
-    python3 python3-paho-mqtt python3-pymysql python3-serial bluez rfkill rsync >/dev/null
-# thư viện Bluetooth (bleak): gói Ubuntu, không có thì cài bằng pip
-apt-get install -y -qq python3-bleak >/dev/null 2>&1 || pip3 install -q --break-system-packages bleak 2>/dev/null || pip3 install -q bleak
+PKGS="apache2 libapache2-mod-php php-cli php-mysql php-zip php-xml php-mbstring php-curl poppler-utils
+      mariadb-server mosquitto mosquitto-clients avahi-daemon avahi-utils
+      python3 python3-paho-mqtt python3-pymysql python3-serial bluez rfkill rsync"
+# Chỉ cài gói còn thiếu: cài lại / cập nhật không cần mạng, và một mirror apt trục trặc
+# ("no longer has a Release file") không làm dừng cả bộ cài khi máy đã đủ gói.
+MISSING=$(for p in $PKGS; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || echo "$p"; done)
+if [ -n "$MISSING" ]; then
+    echo "   cần cài: $(echo $MISSING)"
+    apt-get update -qq || echo "   CẢNH BÁO: apt-get update lỗi (mirror gói?) — vẫn thử cài từ danh sách gói hiện có"
+    apt-get install -y -qq $MISSING >/dev/null
+else
+    echo "   đã đủ gói, bỏ qua apt"
+fi
+# thư viện Bluetooth (bleak) cho chế độ 1 nRF: gói Ubuntu, không có thì cài bằng pip
+python3 -c 'import bleak' 2>/dev/null || apt-get install -y -qq python3-bleak >/dev/null 2>&1 \
+    || pip3 install -q --break-system-packages bleak 2>/dev/null || pip3 install -q bleak \
+    || echo "   CẢNH BÁO: chưa cài được bleak — chế độ 1 nRF (ars-ble / ars-gatt) chưa chạy được; 2 nRF không cần"
 
 say "2/7 Chép mã nguồn vào $DST"
 id -u $SVC_USER >/dev/null 2>&1 || useradd --system --home "$DST" --shell /usr/sbin/nologin $SVC_USER
