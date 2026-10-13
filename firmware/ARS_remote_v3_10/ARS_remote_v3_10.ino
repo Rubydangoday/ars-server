@@ -13,7 +13,7 @@
 using namespace Adafruit_LittleFS_Namespace;
 
 // ============================================================
-// ARS REMOTE - BIDIRECTIONAL BLE V3.10
+// ARS REMOTE - BIDIRECTIONAL BLE V3.11 (folder name kept: ARS_remote_v3_10)
 //
 // Uplink:   Remote -> laptop/server with BLE Manufacturer Data (non-connectable).
 // Downlink: laptop/server -> Remote with STATE/ATTEND/OPENMASK/ACKS (exact ACK/NACK).
@@ -26,6 +26,13 @@ using namespace Adafruit_LittleFS_Namespace;
 //  * exponential randomized backoff 50-150 / 150-400 / 300-800 ms, 4 attempts, SAME seq on retry
 //  * room/seat entered on the keypad (MODE) and stored in flash -> many Remotes can be tested together
 //  * random initial seq per boot (fewer seq collisions after reboot; LOGIN still clears old results)
+//
+// V3.11 vs V3.10 (speed + accuracy for the USB gateway, same pins / keymap / packet format):
+//  * scanner stays ON during the TX burst; the burst stops as soon as the exact result is heard
+//    (gateway puts the ACK on air ~40-80 ms after the first event, inside the 150 ms burst)
+//  * exact LOGIN result: ACKS record (seat, 0, seq, 0, status) — ATTEND bit no longer confirms LOGIN
+//    (it is also set when ANOTHER Remote holds the seat -> V3.10 could show a false "logged in")
+//  * Serial prints dt (first TX -> result, ms) and attempts for every transaction; ADV START FAIL
 // ============================================================
 
 static constexpr uint8_t DEFAULT_ROOM = 1;
@@ -81,6 +88,7 @@ struct PendingTx {
     uint8_t answer = 0;
     uint8_t attempts = 0;
     uint32_t deadlineMs = 0;
+    uint32_t firstTxMs = 0;    // first TX of this transaction -> latency (dt) in the result line
 };
 
 static PendingTx pending;
@@ -206,11 +214,12 @@ static void transmitPending(bool retry) {
     if (pending.kind == PENDING_NONE) return;
 
     pending.attempts++;
+    bool ok;
 
     if (pending.kind == PENDING_LOGIN) {
         printPacket(retry ? "RETRY LOGIN" : "TX LOGIN",
                     ArsBle::TYPE_LOGIN, 0, pending.seq, 0);
-        ArsBle::sendPacket(
+        ok = ArsBle::sendPacket(
             ArsBle::TYPE_LOGIN,
             gRoom,
             gSeat,
@@ -225,7 +234,7 @@ static void transmitPending(bool retry) {
                     pending.question,
                     pending.seq,
                     pending.answer);
-        ArsBle::sendPacket(
+        ok = ArsBle::sendPacket(
             ArsBle::TYPE_ANSWER,
             gRoom,
             gSeat,
@@ -236,7 +245,9 @@ static void transmitPending(bool retry) {
         );
     }
 
-    // sendPacket() returns after the TX burst with the scanner running: listen for the exact result.
+    if (!ok) Serial.println("ADV START FAIL: SoftDevice did not transmit this attempt");
+    // sendPacket() returns after the TX burst (or earlier, once the result was heard) with the scanner
+    // running: listen for the exact result.
     pending.deadlineMs = millis() + ACK_LISTEN_MS;
 }
 
@@ -251,6 +262,7 @@ static void beginLogin() {
     pending.seq = nextSeq();
     pending.answer = 0;
     pending.attempts = 0;
+    pending.firstTxMs = millis();
     retryBackoffArmed = false;
 
     statusLedSet(STATUS_OFF);
@@ -284,19 +296,42 @@ static void beginAnswer() {
     pending.seq = nextSeq();
     pending.answer = selectedAnswer;
     pending.attempts = 0;
+    pending.firstTxMs = millis();
     retryBackoffArmed = false;
 
     statusLedSet(STATUS_OFF);
     transmitPending(false);
 }
 
-static void finishLoginAck() {
-    if (pending.kind != PENDING_LOGIN) return;
+static void printTiming() {
+    Serial.print(" dt=");
+    Serial.print(static_cast<uint32_t>(millis() - pending.firstTxMs));
+    Serial.print("ms attempts=");
+    Serial.println(pending.attempts);
+}
 
-    Serial.println("ACK LOGIN: server confirmed attendance");
+static void finishLoginResult(uint8_t seq, uint8_t status) {
+    if (pending.kind != PENDING_LOGIN) return;
+    if (seq != pending.seq) {                        // result of an older LOGIN: keep waiting for this one
+        Serial.print("Ignore old LOGIN result seq=");
+        Serial.println(seq);
+        return;
+    }
+    if (status == 0) {
+        Serial.print("ACK LOGIN EXACT: server confirmed attendance seq=");
+        Serial.print(seq);
+        printTiming();
+        statusLedFlash(STATUS_GREEN, 350);
+    } else {
+        Serial.print("NACK LOGIN EXACT: server rejected seq=");
+        Serial.print(seq);
+        Serial.print(" reason=");
+        Serial.print(resultStatusName(status));
+        printTiming();
+        statusLedFlash(STATUS_RED, 900);
+    }
     pending.kind = PENDING_NONE;
     retryBackoffArmed = false;
-    statusLedFlash(STATUS_GREEN, 350);
 }
 
 static void finishAnswerAck(uint8_t q, uint8_t seq, uint8_t ans, uint8_t status) {
@@ -319,7 +354,8 @@ static void finishAnswerAck(uint8_t q, uint8_t seq, uint8_t ans, uint8_t status)
         Serial.print(" seq=");
         Serial.print(seq);
         Serial.print(" ans=");
-        Serial.println(answerLetter(ans));
+        Serial.print(answerLetter(ans));
+        printTiming();
         statusLedFlash(STATUS_GREEN, 450);
     } else {
         Serial.print("NACK ANSWER EXACT: server rejected q=");
@@ -329,7 +365,8 @@ static void finishAnswerAck(uint8_t q, uint8_t seq, uint8_t ans, uint8_t status)
         Serial.print(" ans=");
         Serial.print(answerLetter(ans));
         Serial.print(" reason=");
-        Serial.println(resultStatusName(status));
+        Serial.print(resultStatusName(status));
+        printTiming();
         statusLedFlash(STATUS_RED, 700);
     }
 
@@ -342,8 +379,10 @@ static void finishAnswerAck(uint8_t q, uint8_t seq, uint8_t ans, uint8_t status)
 }
 
 static void processDownlink() {
-    if (ArsBle::takeLoginAck()) {
-        finishLoginAck();
+    uint8_t loginSeq = 0;
+    uint8_t loginStatus = 0;
+    if (ArsBle::takeLoginResult(loginSeq, loginStatus)) {
+        finishLoginResult(loginSeq, loginStatus);
     }
 
     uint8_t ackQuestion = 0;
@@ -390,7 +429,8 @@ static void processRetry() {
     if ((int32_t)(now - pending.deadlineMs) < 0) return;
 
     if (pending.attempts >= MAX_ATTEMPTS) {
-        Serial.println("ACK TIMEOUT: server did not confirm");
+        Serial.print("ACK TIMEOUT: server did not confirm");
+        printTiming();
         pending.kind = PENDING_NONE;
         retryBackoffArmed = false;
         statusLedFlash(STATUS_RED, 900);
@@ -573,8 +613,8 @@ void setup() {
     displaySetNumber(currentQuestion);
 
     Serial.println();
-    Serial.println("ARS Remote bidirectional V3.10");
-    Serial.println("BLE: TX burst 150 ms + ACK listen 1000 ms + exact ACK/NACK + exponential backoff");
+    Serial.println("ARS Remote bidirectional V3.11");
+    Serial.println("BLE: TX burst <=150 ms (scan on, stops at result) + ACK listen 1000 ms + exact ACK/NACK (LOGIN too) + backoff");
     Serial.println("GPIO: physical nRF52840 pins via nrf_gpio");
 
     // Per-device pseudo-random seed for retry backoff. Different remotes have

@@ -19,7 +19,9 @@ def check(x,msg):assert x,msg;checks.append(msg)
 def packet(m,type,seq,ans='B'):
  p={'mac':m,'type':type,'seq':seq,'room':room,'id':5,'q':1,'ans':ans,'via':'ble'};i.process(p,json.dumps(p));return p
 packet(other,1,1);check(i.q('SELECT reason FROM rejected WHERE session_id=%s ORDER BY id DESC LIMIT 1',(sid,),True)['reason']=='mapping_mismatch','Reject wrong mapped login')
+check(i.acks[room]==[(5,0,1,0,ING.REJECT_STATUS['mapping_mismatch'])] and acklines()[-1]==f"ACKS 5:0:1:0:{ING.REJECT_STATUS['mapping_mismatch']}",'V3.11: rejected LOGIN gets an exact NACK record (seat, 0, seq, 0, status)')
 packet(mac,1,2);check(bool(i.q('SELECT 1 FROM session_logins WHERE session_id=%s AND mac=%s',(sid,mac),True)),'Accept mapped login')
+check(i.acks[room]==[(5,0,2,0,0)] and acklines()[-1]=='ACKS 5:0:2:0:0','V3.11: accepted LOGIN gets an exact ACK record for its own seq (ATTEND bit is not a confirmation)')
 packet(mac,2,3);check(i.q('SELECT reason FROM rejected WHERE session_id=%s ORDER BY id DESC LIMIT 1',(sid,),True)['reason']=='q_closed','Reject while receiving locked')
 i.x('UPDATE session_questions SET status="open",deadline=NOW(3)+INTERVAL 60 SECOND WHERE session_id=%s AND question_id=%s',(sid,qid))
 packet(mac,2,4);check(i.q('SELECT COUNT(*) AS n FROM responses r JOIN session_questions sq ON sq.id=r.session_q_id WHERE sq.session_id=%s',(sid,),True)['n']==1,'Accept open question')
@@ -39,6 +41,7 @@ raw=blecodec.encode_uplink(1,room,5,0,10,'',2950);bp=blecodec.decode_uplink(raw,
 check(bp=={'mac':mac,'room':room,'type':1,'id':5,'q':0,'seq':10,'ans':'','batt':2950,'rssi':-60,'via':'ble'},'BLE uplink bytes decode to gateway JSON')
 check(blecodec.decode_uplink(blecodec.encode_uplink(2,room,5,3,11,'J'),mac)['ans']=='J' and blecodec.decode_uplink(b'\x00\x01',mac) is None,'BLE answer letter decoded, foreign data ignored')
 n=i.stats['dup'];i.process(bp,json.dumps(bp));check(i.stats['dup']==n+1,'BLE login packet reaches ingest (already logged in = duplicate)')
+check(i.acks[room]==[(5,0,10,0,0)],'V3.11: LOGIN again (retry / Remote reboot) is confirmed with its new seq and replaces the seat\'s old answer result')
 st=i.build_state(room);fr=[blecodec.encode_cmd(c,room) for c in state_cmds(room,st)]
 check([f[0] for f in fr]==[0x10,0x11,0x12,0x13] and len(fr[0][1])==19 and len(fr[1][1])==16 and len(fr[2][1])==11 and all(len(f[1])<=24 for f in fr),'State commands encode to BLE beacon frames (STATE carries n_options, all fit legacy advertising)')
 check(blecodec.encode_cmd('ACKS 5:1:7:2:0',room)[1][3:]==bytes([1,5,1,7,2,0]),'ACKS beacon carries exact records (seat, question, seq, answer, status)')

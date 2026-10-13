@@ -27,14 +27,20 @@ Nạp `firmware/ARS_remote_v3_10` (xem README cùng thư mục). Mỗi Remote: M
 Nạp `firmware/ARS_gateway_v3_10` vào một SuperMini (xem README cùng thư mục), cắm USB máy chủ.
 
 1. **Gateway một mình** (~3 phút). `sudo systemctl stop ars-bridge`, mở Serial monitor 115200 cổng gateway (`arduino-cli monitor -p /dev/ttyACM0` hoặc Arduino IDE):
-   - thấy `# ARS-GW 3.10`; gõ `d` rồi bấm OK trên một Remote → nhiều dòng `# RX … seq=…`, bản thứ 2 trở đi có `dup`, và **đúng 1** dòng JSON `{"mac":…}` cho lần bấm đó;
-   - gõ tay `STATE 1 1 1 4 00` (room 1, câu 1 mở, 4 lựa chọn) rồi `ATTEND 80` (bitmap điểm danh có ghế 7: byte 0 bit 7 — đổi theo ghế của Remote) → đèn gateway sáng, Remote ghế 7 báo đã điểm danh; Remote room 1 hiện câu 1, bấm E bị chặn tại chỗ (`LOCAL REJECT` trên Serial Remote);
+   - thấy `# ARS-GW 3.11`; gõ `d` rồi bấm OK trên một Remote → nhiều dòng `# RX … seq=…`, bản thứ 2 trở đi có `dup`, và **đúng 1** dòng JSON `{"mac":…}` cho lần bấm đó;
+   - gõ tay `STATE 1 1 1 4 00` (room 1, câu 1 mở, 4 lựa chọn) rồi `ACKS 7:0:<seq LOGIN Remote vừa in>:0:0` (kết quả LOGIN chính xác cho ghế 7 — đổi theo ghế của Remote) → đèn gateway sáng, Remote in `ACK LOGIN EXACT`; Remote room 1 hiện câu 1, bấm E bị chặn tại chỗ (`LOCAL REJECT` trên Serial Remote);
    - gõ `ACKS <ghế>:1:<seq vừa gửi>:<đáp án 1–4>:0` trong vòng 1 s sau khi bấm (hoặc để Remote gửi lại) → Remote đèn xanh; status khác 0 → đèn đỏ;
    - không gõ gì 15 s → `# server OFF`, đèn tắt; `s` → dòng `# STAT … adverr=0`.
 2. **Với server.** Đóng Serial monitor, `sudo systemctl start ars-bridge`. Web → bảng điều khiển buổi học: **Gateway: đang nhận (… gói/s)**; `ars mqtt` thấy `ars/<room>/resp` khi bấm Remote, mỗi lần bấm 1 bản tin.
 3. Làm mục 3–4 bên dưới với `journalctl -u ars-ingest -u ars-bridge`. Bỏ qua mục 2 (chỉ dành cho Bluetooth laptop).
 
 Tiêu chí riêng của gateway: `adverr` = 0, `qdrop` = 0, `usbdrop` = 0 trong suốt bài test; mỗi lần bấm đúng 1 dòng JSON (lần gửi lại cách ≥ 1 s được tính là dòng mới — đúng thiết kế).
+
+4. **Đo gói lên qua gateway** (~80 s). `ars-bridge` đang chạy; Terminal 1: `journalctl -u ars-bridge -f --since now | tee probe_server.log`; Serial Remote gõ `u` (100 gói PROBE, lưu `probe_serial.log`). Xong:
+   ```bash
+   python3 tools/ble_txn_report.py probe_serial.log probe_server.log --probe     # tiêu chí ≥ 99 %
+   ```
+   Thấp → gói lên mất do sóng (vị trí gateway, cáp USB nối dài, Wi-Fi 2.4 GHz gần), chưa phải do server.
 
 ## 2. Đo radio của card Bluetooth laptop (Bước 2)
 
@@ -87,7 +93,7 @@ Thông số ACK của `ars-ble` cũng chỉnh được không cần sửa code: 
 
 ## 3. Test 1 Remote (50 giao dịch)
 
-Terminal 1: `journalctl -u ars-ingest -u ars-ble -f --since now | tee server.log`
+Terminal 1: `journalctl -u ars-ingest -u ars-bridge -f --since now | tee server.log` (chế độ Bluetooth laptop: `-u ars-ble`)
 Terminal 2: Serial monitor 115200 của Remote, lưu thành `serial.log`.
 
 Trên web mở câu 1 (4 lựa chọn), bấm 50 lần xen kẽ A/B/C/D + OK (chờ đèn trước khi bấm tiếp). Không chạy `sudo ars ble` trong lúc test (chế độ dump không phát ACK).
@@ -113,10 +119,12 @@ ars sim 30 <room>             # tools/sim_clickers.py — in tỉ lệ ACK, NACK
 | Server nhận (uplink) | ≥ 99 % giao dịch | `ble_txn_report.py` cột server |
 | Giao dịch có kết quả chính xác (ACK hoặc NACK) | ≥ 99 % | `ble_txn_report.py` |
 | Timeout (UPLINK_MISS + ACK_MISS) | ≤ 1 / 100 | `ble_txn_report.py` |
-| ACK ở lần gửi đầu | ≥ 90 % (1 Remote), ≥ 80 % (cả lớp cùng bấm) | `ble_txn_report.py` |
-| Độ trễ OK → đèn xanh (lần đầu) | thường < 300 ms | Serial (thời điểm TX → ACK) |
-| Tỉ lệ thời gian quét khi cả lớp bấm | ≥ 70 % | `DIAG SCAN DUTY` |
+| ACK ở lần gửi đầu | ≥ 95 % (1 Remote, gateway), ≥ 80 % (cả lớp cùng bấm) | `ble_txn_report.py` |
+| Độ trễ OK → đèn xanh | P95 < 300 ms (1 Remote, gateway; ước lượng 50–120 ms) | `ble_txn_report.py` (cột `dt ms`, Remote V3.11) |
+| LOGIN | `ACK LOGIN EXACT` đúng seq; ghế đã có máy khác → `NACK LOGIN EXACT reason=SEAT_TAKEN` | Serial Remote |
+| Gói lên qua gateway | ≥ 99 % | `ble_txn_report.py --probe` (mục 1b.4) |
+| Tỉ lệ thời gian quét khi cả lớp bấm (chỉ chế độ Bluetooth laptop) | ≥ 70 % | `DIAG SCAN DUTY` |
 | ACK sai (đèn xanh cho giao dịch khác) | 0 | Serial: mọi `ACK ANSWER EXACT` khớp seq vừa gửi |
 | Đáp án không hợp lệ (E khi 4 lựa chọn) | bị chặn tại Remote, không gửi | Serial `LOCAL REJECT` |
 
-FAIL ở uplink → giữ giao thức, thử tăng `TX_BURST_MS` (150 → 200) hoặc giảm `ACK_EXCLUSIVE_S`. FAIL ở ACK_MISS khi đã có `btmon` → bước 2/3 (giảm tỉ lệ quét BlueZ bằng `ScanWindowDiscovery`, hoặc gateway nRF52840 USB: `sudo ars gateway usb`).
+FAIL ở uplink (gateway) → đo mục 1b.4 trước: PROBE < 99 % là do sóng (vị trí gateway, nhiễu Wi-Fi), mới thử tăng `TX_BURST_MS`. Chế độ Bluetooth laptop: FAIL ở uplink → giữ giao thức, thử tăng `TX_BURST_MS` (150 → 200) hoặc giảm `ACK_EXCLUSIVE_S`. FAIL ở ACK_MISS khi đã có `btmon` → bước 2/3 (giảm tỉ lệ quét BlueZ bằng `ScanWindowDiscovery`, hoặc gateway nRF52840 USB: `sudo ars gateway usb`).

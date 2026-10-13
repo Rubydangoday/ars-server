@@ -60,8 +60,10 @@ Tên máy trong link đổi được ở trang quản trị Tailscale (Machines 
 
 ## 1d. Kết nối Remote: Bluetooth qua gateway nRF52840
 
+Từng bước từ đầu (nạp firmware, mỗi buổi học, xử lý sự cố): **[HUONG_DAN_2NRF.md](HUONG_DAN_2NRF.md)**.
+
 Phần cứng gồm **Remote nRF52840** (mỗi học sinh một cái) và **một gateway nRF52840** cắm USB. Remote phát Bluetooth, gateway thu cả phòng rồi chuyển về máy chủ, đồng thời phát lại trạng thái (câu đang mở, đã điểm danh, đã nhận) để Remote bật đèn xanh. Hai cách cắm gateway:
-1. Cắm **máy chủ** → dịch vụ `ars-bridge`. Room trong `/opt/ars-server/config.ini`, mục `[gateway] room`, phải trùng mã lớp (room) đang học; cổng ở `[gateway] serial` (mặc định `/dev/ttyACM0`, xem `ars ports`). Sửa xong chạy `sudo systemctl restart ars-bridge`.
+1. Cắm **máy chủ** → dịch vụ `ars-bridge`. Room trong `/opt/ars-server/config.ini`, mục `[gateway] room`, phải trùng mã lớp (room) đang học; cổng ở `[gateway] serial` (mặc định `auto` = tự tìm gateway; xem `ars ports`, `ars gw`). Sửa xong chạy `sudo systemctl restart ars-bridge`.
 2. Cắm **máy của giáo viên** (phòng khác, không cài gì): bảng điều khiển → **🔌 Gateway USB máy này** → **Kết nối gateway** → chọn cổng.
    Cần Chrome/Edge và trang mở bằng link **https** (link Internet) hoặc `localhost`. Giữ tab mở trong buổi học.
 
@@ -82,7 +84,7 @@ Các dịch vụ tự chạy khi bật máy. Chỉ cần:
 | Giáo viên | `ars links` | `http://ars.local/gv` (hoặc link Internet) |
 | Học sinh | — | `http://ars.local/hs` · quét QR ở trang Tổng quan |
 | Chạy thử không cần mạch | `ars sim 30` | Mở bảng điều khiển, bấm **Mở** câu |
-| Có gateway thật | `ars ports` → nếu không phải `/dev/ttyACM0` thì sửa `/opt/ars-server/config.ini` rồi `sudo systemctl restart ars-bridge` | Bảng điều khiển: **Gateway: đang nhận** |
+| Có gateway thật | Cắm gateway, `ars gw` → online: CÓ (bridge tự tìm cổng) | Bảng điều khiển: **Gateway: đang nhận** |
 
 ## 3. Lệnh tiện ích
 
@@ -97,7 +99,8 @@ Các dịch vụ tự chạy khi bật máy. Chỉ cần:
 | `ars sql "SELECT * FROM students"` | chạy nhanh một câu SQL |
 | `ars tables` | liệt kê bảng và số dòng |
 | `ars sim 30 1` | 30 Remote nRF52840 giả lập (room 1), gửi qua gateway giả lập |
-| `ars ports` | liệt kê cổng serial để tìm gateway |
+| `ars gw` | tình trạng gateway: online, cổng, firmware, số gói 5 s qua, lỗi |
+| `ars ports` | liệt kê cổng serial, đánh dấu cổng có firmware gateway |
 | `sudo ars gateway usb` / `ble` | thu bằng gateway nRF52840 cắm USB (mặc định) / bằng Bluetooth laptop |
 | `sudo ars ble` | in mọi gói Bluetooth laptop nghe được — kiểm tra firmware Remote khi không có gateway (Ctrl+C thoát) |
 | `ars backup` | sao lưu CSDL ra file .sql |

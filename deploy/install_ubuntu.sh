@@ -46,10 +46,12 @@ say "4/7 Tạo CSDL và tài khoản"
 CFG="$DST/config.ini"
 if [ -f "$CFG" ]; then
     DBPASS=$(sed -n 's/^password *= *//p' "$CFG" | head -1)
+    # cổng mặc định cũ của bộ cài → tự tìm gateway (Remote cắm cùng lúc cũng có thể là /dev/ttyACM0)
+    sed -i 's#^serial *= */dev/ttyACM0 *$#serial = auto#' "$CFG"
     echo "   giữ nguyên config.ini đã có"
 else
     DBPASS=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)
-    sed -e "s/^password = .*/password = $DBPASS/" -e "s#^serial = .*#serial = /dev/ttyACM0#" \
+    sed -e "s/^password = .*/password = $DBPASS/" -e "s#^serial = .*#serial = auto#" \
         "$DST/config.ini.example" > "$CFG"
     echo "   đã tạo config.ini (mật khẩu DB ngẫu nhiên)"
 fi
@@ -122,6 +124,10 @@ else
     echo "   (không có systemd) tự chạy: sudo -u $SVC_USER python3 $DST/ingest/ingest.py &"
 fi
 install -m 755 "$DST/deploy/ars" /usr/local/bin/ars
+if [ -d /etc/udev/rules.d ]; then                # ModemManager không chiếm cổng SuperMini (gateway / Remote)
+    install -m 644 "$DST/deploy/99-ars-usb.rules" /etc/udev/rules.d/99-ars-usb.rules
+    udevadm control --reload-rules 2>/dev/null && udevadm trigger --subsystem-match=tty 2>/dev/null || true
+fi
 chmod 755 "$DST/deploy/ars-mdns.sh"
 if [ $HAS_SYSTEMD = 1 ]; then
     systemctl enable -q --now avahi-daemon 2>/dev/null || true
@@ -147,7 +153,7 @@ echo "   Học sinh  : http://$LANNAME/hs   hoặc  http://${IP:-<IP-máy>}/hs"
 if [ -n "$PUB" ]; then echo "   Internet  : $PUB/gv   ·   $PUB/hs"
 else echo "   Internet  : chưa bật — chạy  sudo ars public on  để có link https cố định dùng ở mọi nơi"; fi
 echo " Lệnh tiện ích: ars links | ars status | ars logs | ars watch | ars db | ars sim 30 | ars public on"
-echo " Gateway nRF52840: cắm USB vào máy chủ (dịch vụ ars-bridge; sửa [gateway] serial trong $CFG nếu không phải /dev/ttyACM0,"
-echo "          rồi sudo systemctl restart ars-bridge) — hoặc cắm máy GV, bấm \"Gateway USB máy này\" trên bảng điều khiển."
+echo " Gateway nRF52840: cắm USB vào máy chủ — ars-bridge tự tìm cổng ([gateway] serial = auto). Kiểm tra: ars gw"
+echo "          Hoặc cắm máy GV, bấm \"Gateway USB máy này\" trên bảng điều khiển."
 echo "          Chưa có gateway: dùng tạm Bluetooth của máy chủ: sudo ars gateway ble   (quay lại: sudo ars gateway usb)"
 echo "────────────────────────────────────────────────────────────"

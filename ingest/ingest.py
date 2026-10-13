@@ -87,9 +87,9 @@ class Ingest:
         client.subscribe('ars/+/gw/status', qos=1)
 
     def on_message(self, client, userdata, msg):
+        if msg.topic.endswith('/gw/status'):              # có thể kèm thống kê gateway: không cắt
+            return self.gw_status(msg.topic, msg.payload.decode('utf-8', 'replace')[:4000])
         raw = msg.payload.decode('utf-8', 'replace')[:400]
-        if msg.topic.endswith('/gw/status'):
-            return self.gw_status(msg.topic, raw)
         try:
             pkt = json.loads(raw)
         except ValueError:
@@ -205,25 +205,36 @@ class Ingest:
         self.x('UPDATE devices SET pkt_dup=pkt_dup+1 WHERE mac=%s', (mac,))
 
     def remember_reject_result(self, room, pkt, reason):
-        """Publish an exact NACK for a syntactically valid ANSWER packet.
+        """Publish an exact NACK for a syntactically valid ANSWER or LOGIN packet.
 
         Malformed packets may not contain enough identity fields to reply safely,
-        so those are simply logged. LOGIN rejection still uses the existing login
-        handshake behavior; V3.7 result status is for ANSWER transactions.
+        so those are simply logged. V3.11: LOGIN gets an exact result too
+        (record seat:0:seq:0:status) instead of relying on the ATTEND bitmap.
         """
         try:
-            if int(pkt.get('type', 0)) != PKT_ANSWER:
-                return
+            ptype = int(pkt.get('type', 0))
             r = int(room if room is not None else pkt['room'])
             seat = int(pkt['id'])
-            question = int(pkt.get('q', 0))
             seq = int(pkt['seq']) & 0xFF
+            status = REJECT_STATUS.get(reason, STATUS_OTHER)
+            if ptype == PKT_LOGIN:
+                return self.remember_login(r, seat, seq, status)
+            if ptype != PKT_ANSWER:
+                return
+            question = int(pkt.get('q', 0))
             ans = str(pkt.get('ans') or '').upper()[:1]
             if ans not in LETTERS:
                 return
         except (KeyError, ValueError, TypeError):
             return
-        self.remember_ack(r, seat, question, seq, ans, REJECT_STATUS.get(reason, STATUS_OTHER))
+        self.remember_ack(r, seat, question, seq, ans, status)
+
+    def remember_login(self, room, seat, seq, status=0):
+        """V3.11: kết quả chính xác của một LOGIN = bản ghi (ghế, câu 0, seq, đáp án 0, status) trong gói ACKS.
+
+        Remote chỉ xác nhận điểm danh khi thấy đúng seq LOGIN vừa gửi; bitmap ATTEND (bit ghế bật cả khi máy KHÁC
+        đã chiếm ghế) không còn được dùng làm xác nhận."""
+        self.remember_result(room, (int(seat) & 0xFF, 0, int(seq) & 0xFF, 0, int(status) & 0xFF))
 
     def remember_ack(self, room, seat, question, seq, ans, status=0):
         """Ghi nhớ kết quả chính xác của một ANSWER để phát xuống Remote.
@@ -238,8 +249,11 @@ class Ingest:
             answer_code = LETTERS.index(str(ans).upper()) + 1
         except ValueError:
             return
-        ack = (int(seat) & 0xFF, int(question) & 0xFF, int(seq) & 0xFF,
-               answer_code & 0xFF, int(status) & 0xFF)
+        self.remember_result(room, (int(seat) & 0xFF, int(question) & 0xFF, int(seq) & 0xFF,
+                                    answer_code & 0xFF, int(status) & 0xFF))
+
+    def remember_result(self, room, ack):
+        """Đưa một bản ghi (ghế, câu, seq, đáp án, status) lên gói ACKS — dùng chung cho ANSWER và LOGIN."""
         lst = self.acks.setdefault(room, [])
         exp = self.ack_exp.setdefault(room, {})
         exp[ack[0]] = time.monotonic() + ACK_TTL_S
@@ -293,22 +307,23 @@ class Ingest:
         by_seat = self.q('SELECT mac FROM session_logins WHERE session_id=%s AND seat_no=%s', (sid, seat), one=True)
         if by_seat:
             if by_seat['mac'] == mac:
-                # A LOGIN can also mean the Remote rebooted. Drop an old ANSWER ACK
-                # for this seat so a recycled 8-bit seq cannot be falsely confirmed.
-                self.drop_ack(room, seat)
-                self.dirty.add(room)                     # phát/giữ ATTEND để Remote xác nhận trạng thái đăng nhập
-                return self.dup(mac)                     # đã điểm danh rồi (gói lặp)
+                # A LOGIN can also mean the Remote rebooted. Replacing the seat's record with the
+                # LOGIN result also drops an old ANSWER ACK, so a recycled 8-bit seq cannot be falsely confirmed.
+                self.remember_login(room, seat, int(pkt['seq']) & 0xFF)
+                self.dirty.add(room)
+                log.info('ĐIỂM DANH lại ghế %02d seq=%03d %s', seat, int(pkt['seq']) & 0xFF, mac)
+                return self.dup(mac)                     # đã điểm danh rồi (gói lặp / gửi lại / Remote khởi động lại)
             return self.reject(room, sid, pkt, 'seat_taken', raw)   # ghế đã có máy khác
         by_mac = self.q('SELECT seat_no FROM session_logins WHERE session_id=%s AND mac=%s', (sid, mac), one=True)
         if by_mac:
             return self.reject(room, sid, pkt, 'mac_bound', raw)    # máy này đã gắn ghế khác
         self.x('INSERT INTO session_logins (session_id, seat_no, mac, logged_at) VALUES (%s,%s,%s,NOW(3))',
                (sid, seat, mac))
-        self.drop_ack(room, seat)
+        self.remember_login(room, seat, int(pkt['seq']) & 0xFF)
         self.x('UPDATE devices SET last_seat=%s WHERE mac=%s', (seat, mac))
         self.stats['ok'] += 1
         self.dirty.add(room)
-        log.info('ĐIỂM DANH ghế %02d  %s', seat, mac)
+        log.info('ĐIỂM DANH ghế %02d seq=%03d %s', seat, int(pkt['seq']) & 0xFF, mac)
 
     def answer(self, ses, room, mac, seat, qid, seq, ans, rssi, pkt, raw):
         sid = ses['id']

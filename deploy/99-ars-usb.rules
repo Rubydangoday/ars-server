@@ -1,0 +1,4 @@
+# ARS: SuperMini nRF52840 (Remote / gateway, USB VID 0x239A — core Adafruit nRF52, bootloader nice!nano/Adafruit).
+# ModemManager không được thăm dò các cổng này: nó gửi lệnh AT vào cổng vừa cắm, chiếm cổng vài giây,
+# làm bridge.py không mở được gateway và Arduino IDE nạp firmware lỗi.
+ACTION=="add|change", SUBSYSTEMS=="usb", ATTRS{idVendor}=="239a", ENV{ID_MM_DEVICE_IGNORE}="1"

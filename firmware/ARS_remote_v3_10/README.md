@@ -1,4 +1,6 @@
-# ARS Remote V3.10 (nRF52840 SuperMini, Rev J)
+# ARS Remote V3.11 (nRF52840 SuperMini, Rev J)
+
+Thư mục giữ tên `ARS_remote_v3_10` để không đổi đường dẫn. V3.11 (cùng chân, phím, định dạng gói): vẫn quét trong lúc phát và dừng phát ngay khi nghe thấy kết quả; LOGIN có kết quả chính xác `(ghế, 0, seq, 0, status)`; Serial in độ trễ `dt=…ms`. Chi tiết: [../PROTOCOL_V3_10.md](../PROTOCOL_V3_10.md) mục V3.11.
 
 Firmware Remote cho ARS. Giao thức: [../PROTOCOL_V3_10.md](../PROTOCOL_V3_10.md). Chân GPIO và bản đồ phím **giữ nguyên V3.9** (`board_pins.h`, `keypad.cpp`).
 
@@ -23,18 +25,18 @@ Firmware Remote cho ARS. Giao thức: [../PROTOCOL_V3_10.md](../PROTOCOL_V3_10.m
 
 - Lần đầu (flash trống) Remote hiện `--` và chờ nhập ghế. Room mặc định 1 (MODE hai lần để đổi).
 - MODE → OK (không gõ gì) = LOGIN lại với ghế cũ (thay cho chức năng MODE của V3.9).
-- Đèn xanh = server nhận đúng giao dịch; đỏ dài = NACK (Serial in lý do) hoặc hết 4 lần gửi.
+- Đèn xanh = server nhận đúng giao dịch (cả LOGIN); đỏ dài = NACK (Serial in lý do, ví dụ `SEAT_TAKEN` khi LOGIN vào ghế đã có máy khác) hoặc hết 4 lần gửi.
 
 **Chẩn đoán qua Serial (Bước 2, xem `../TEST_V3_10.md` mục 2):** gõ `d` = bật/tắt đếm beacon nghe được mỗi giây (`DIAG RX/s STATE= ATTEND= OPENMASK= ACKS= PROBE= phase= rssi=`), `u` = phát 100 gói PROBE (0,7 s/gói) cho `tools/ble_probe.py uplink`, `h` = trợ giúp. Gói PROBE (type 3) bị `ars-ble`/ingest bỏ qua.
 
-Serial 115200 in mọi giao dịch: `TX ANSWER …`, `No ACK yet -> random backoff …`, `RETRY ANSWER …`, `ACK ANSWER EXACT …`, `NACK ANSWER EXACT … reason=…`, `ACK TIMEOUT`.
+Serial 115200 in mọi giao dịch: `TX ANSWER …`, `No ACK yet -> random backoff …`, `RETRY ANSWER …`, `ACK ANSWER EXACT … dt=85ms attempts=1`, `NACK ANSWER EXACT … reason=…`, `ACK LOGIN EXACT …`, `NACK LOGIN EXACT … reason=…`, `ACK TIMEOUT … dt=…`, `ADV START FAIL`. Lưu log này rồi chạy `tools/ble_txn_report.py` để có tỉ lệ và độ trễ.
 
 ## Thông số radio
 
 | Hằng số | File | V3.9 | V3.10 |
 |---|---|---|---|
 | `ADV_INTERVAL_UNITS` | ars_ble.cpp | 40 (25 ms) | 40 (25 ms) |
-| TX | ars_ble.cpp | 3 × 100 ms xen RX 120 ms | `TX_BURST_MS` 150 ms một lần |
+| TX | ars_ble.cpp | 3 × 100 ms xen RX 120 ms | `TX_BURST_MS` 150 ms một lần; V3.11: vẫn quét, dừng sớm khi có kết quả |
 | Nghe ACK | .ino | 3 × 120 ms + 650 ms | `ACK_LISTEN_MS` 1000 ms liên tục |
 | Kiểu quảng bá | ars_ble.cpp | connectable | non-connectable non-scannable |
 | Scanner | ars_ble.cpp | 160/160 (liên tục) | 160/160 (liên tục) |

@@ -15,9 +15,13 @@ static constexpr uint16_t SCAN_WINDOW_UNITS = 160;
 // Quảng bá non-connectable 20 ms (nhỏ nhất cho phép); SoftDevice cộng thêm 0–10 ms ngẫu nhiên → mỗi sự kiện
 // cách nhau ≤ 30 ms. Đổi nội dung mỗi SLOT_MS = 30 ms nên khe nào cũng có ít nhất 1 sự kiện (× 3 kênh).
 static constexpr uint32_t ADV_INTERVAL_UNITS = 32;        // 20 ms
-static constexpr uint32_t SLOT_MS = 30;
+static constexpr uint32_t TICK_MS = 10;
+static constexpr uint8_t TICKS_PER_SLOT = 3;              // SLOT = 30 ms
 static constexpr int8_t ADV_TX_POWER_DBM = 8;             // nRF52840 tối đa +8 dBm: Remote xa vẫn nghe được ACK
-// Có ACK: xen kẽ ACKS với STATE/ATTEND/OPENMASK → ACKS khoảng 60 ms một lần, ~16 lần trong 1 s Remote nghe.
+// ACK mới (nội dung ACKS đổi): lên sóng ngay ở nhịp 10 ms kế tiếp, và trong ACK_FOCUS_MS chỉ phát ACKS — Remote V3.11
+// đang quét ngay trong đợt phát 150 ms của nó và dừng phát khi nghe thấy kết quả. Sau đó ACKS xen kẽ với
+// STATE/ATTEND/OPENMASK (~60 ms một lần) tới khi ingest gửi "ACKS -".
+static constexpr uint32_t ACK_FOCUS_MS = 250;
 
 #define GW_LOCK()   taskENTER_CRITICAL()
 #define GW_UNLOCK() taskEXIT_CRITICAL()
@@ -42,6 +46,9 @@ static uint8_t curData[MAX_FRAME];
 static volatile bool advOn = false;
 static uint8_t phase = 0;
 static uint8_t otherIdx = 0;
+static uint8_t tickN = 0;
+static volatile bool ackKick = false;                     // ACKS vừa đổi: phát ngay, không chờ hết khe
+static volatile uint32_t ackFocusUntil = 0;
 static SoftwareTimer slotTimer;
 
 static void scanCallback(ble_gap_evt_adv_report_t* report) {
@@ -83,8 +90,13 @@ void setFrame(Kind kind, const uint8_t* data, uint8_t len) {
     if (kind < 0 || kind >= K_COUNT) return;
     if (len > MAX_FRAME) len = MAX_FRAME;
     GW_LOCK();
+    const bool changed = len != frameLen[kind] || memcmp(frameData[kind], data, len) != 0;
     memcpy(frameData[kind], data, len);
     frameLen[kind] = len;
+    if (kind == K_ACKS && changed && len > 4) {
+        ackKick = true;
+        ackFocusUntil = millis() + ACK_FOCUS_MS;
+    }
     GW_UNLOCK();
 }
 
@@ -140,19 +152,28 @@ static bool advPublish(const uint8_t* frame, uint8_t len) {
     return true;
 }
 
-// Mỗi SLOT_MS: chọn khe phát tiếp theo. Có ACK → ACKS mỗi khe thứ hai; còn lại xoay STATE → ATTEND → OPENMASK.
+// Mỗi TICK_MS; đổi khe mỗi TICKS_PER_SLOT nhịp, hoặc ngay khi có ACK mới. Có ACK → trong ACK_FOCUS_MS chỉ ACKS,
+// sau đó ACKS mỗi khe thứ hai; còn lại xoay STATE → ATTEND → OPENMASK.
 static void slotTick(TimerHandle_t) {
     uint8_t lens[K_COUNT];
+    bool kick;
+    uint32_t focusUntil;
     GW_LOCK();
     memcpy(lens, frameLen, sizeof lens);
+    kick = ackKick;
+    ackKick = false;
+    focusUntil = ackFocusUntil;
     GW_UNLOCK();
+    if (!kick && ++tickN < TICKS_PER_SLOT) return;
+    tickN = 0;
 
     const bool ack = lens[K_ACKS] > 4;                              // "ACKS -" (0 bản ghi) = không phát ACK
     bool others = false;
     for (uint8_t k = K_STATE; k <= K_OPENMASK; ++k) others = others || lens[k];
+    const bool focus = (int32_t)(focusUntil - millis()) > 0;
 
     int8_t kind = K_NONE;
-    if (ack && (!others || (phase++ & 1) == 0)) {
+    if (ack && (focus || !others || (phase++ & 1) == 0)) {
         kind = K_ACKS;
     } else {
         for (uint8_t i = 0; i < 3 && kind == K_NONE; ++i) {
@@ -183,7 +204,7 @@ void begin() {
     Bluefruit.Scanner.useActiveScan(false);
     Bluefruit.Scanner.start(0);
 
-    slotTimer.begin(SLOT_MS, slotTick);
+    slotTimer.begin(TICK_MS, slotTick);
     slotTimer.start();
 }
 

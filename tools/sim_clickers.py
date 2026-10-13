@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """sim_clickers.py — giả lập gateway nRF52840 (bridge.py) + N Remote nRF52840 ở tầng MQTT (không cần phần cứng).
 
-Mỗi clicker ảo làm như firmware Remote V3.10 (firmware/ARS_remote_v3_10):
-  - điểm danh: gửi LOGIN tới khi thấy bit của mình trong ATTEND;
+Mỗi clicker ảo làm như firmware Remote V3.11 (firmware/ARS_remote_v3_10):
+  - điểm danh: gửi LOGIN tới khi thấy kết quả CHÍNH XÁC (ghế, 0, seq LOGIN, 0, status) trong gói ACKS;
   - khi STATE báo câu đang mở: chờ ngẫu nhiên rồi chọn 1 chữ trong số lựa chọn của câu, phát một đợt
     ANSWER (6 sự kiện quảng bá, mỗi sự kiện có thể mất với xác suất --loss), nghe 1 s chờ ACK CHÍNH XÁC
     (ghế, câu, seq, đáp án) trong gói ACKS; chưa có thì nghỉ ngẫu nhiên 50–150 / 150–400 / 300–800 ms rồi
@@ -85,15 +85,6 @@ class Sim:
                 self.cli.publish(f'ars/{self.room}/resp', json.dumps(pkt), qos=1)
             time.sleep(random.uniform(0.02, 0.03))
 
-    def wait_bit(self, key, seat, timeout, q=None):
-        end = time.time() + timeout
-        with self.cv:
-            while time.time() < end:
-                if seat in self.state[key] and (q is None or self.state['qid'] == q):
-                    return True
-                self.cv.wait(end - time.time())
-        return False
-
     def wait_ack(self, seat, q, seq, ans_code, timeout):
         """Nghe ACK chính xác như Remote: đúng ghế, câu, seq, đáp án (status 0 = nhận, >0 = NACK)."""
         end = time.time() + timeout
@@ -113,10 +104,10 @@ class Sim:
         mac = 'C0:DE:%02X:%02X:%02X:%02X' % (self.room, seat, random.randint(0, 255), random.randint(0, 255))
         seq = random.randint(0, 255)
         time.sleep(random.uniform(0, 2))
-        for _ in range(3):                                # điểm danh
+        for _ in range(3):                                # điểm danh (V3.11: kết quả chính xác, câu 0, đáp án 0)
             seq = (seq + 1) & 0xFF
             self.burst(mac, 1, seat, 0, seq, '')
-            if self.wait_bit('attend', seat, 2):
+            if self.wait_ack(seat, 0, seq, 0, 2) == 0:
                 break
         done_q = set()
         end = time.time() + self.a.duration

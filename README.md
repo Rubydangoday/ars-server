@@ -6,6 +6,8 @@ Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Re
 
 Hướng dẫn sử dụng cho giáo viên, học sinh, phụ huynh và lập trình viên: **[huong-dan-su-dung/](huong-dan-su-dung/README.md)**
 
+Cài đặt, nạp firmware, chạy mỗi buổi và xử lý sự cố hệ thống 2 nRF (Remote + gateway USB): **[HUONG_DAN_2NRF.md](HUONG_DAN_2NRF.md)**
+
 Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi tiết) · [UPGRADE_V10.md](UPGRADE_V10.md) (LMS, phụ huynh) · [UPGRADE_V11.md](UPGRADE_V11.md) (trường, Cloud, thi đua, Zalo/SMS) · [UPGRADE_V12.md](UPGRADE_V12.md) (đăng nhập Google, học sinh tự đăng ký) · [tests/README.md](tests/README.md)
 
 ---
@@ -45,6 +47,7 @@ Phần cứng gồm **2 loại nRF52840**: **Remote** (mỗi học sinh một c�
 ```
 ars-server/
 ├── README.md                     Tài liệu này
+├── HUONG_DAN_2NRF.md            Chạy hệ thống 2 nRF từ đầu: cài, nạp firmware, mỗi buổi học, cập nhật, đo, xử lý sự cố
 ├── HUONG_DAN_CAI_DAT.md          Hướng dẫn cài đặt & vận hành chi tiết (Ubuntu, Windows, link cố định, Bluetooth / Remote nRF52840)
 ├── huong-dan-su-dung/            Hướng dẫn sử dụng: giáo viên, học sinh, phụ huynh, lập trình viên (README là mục lục)
 ├── UPGRADE_V10/V11/V12.md        Ghi chú nâng cấp từng phiên bản (migration, tính năng mới, giới hạn)
@@ -96,6 +99,7 @@ ars-server/
 │   ├── ars-ingest.service        systemd: chạy ingest.py
 │   ├── ars-bridge.service        systemd: bridge.py cho gateway USB (nhóm dialout)
 │   ├── ars-ble.service           systemd (tuỳ chọn, tắt sẵn): ble_scan.py (nhóm bluetooth, tự rfkill unblock)
+│   ├── 99-ars-usb.rules          udev: ModemManager không chiếm cổng SuperMini (gateway / Remote)
 │   ├── ars-mdns.service/.sh      Quảng bá tên ars.local trong LAN
 │   ├── apache-ars.conf           Alias /ars → web/, link ngắn /gv /hs, chặn lib/, proxy WebSocket /mqtt
 │   └── mosquitto-ars.conf        2 listener MQTT (1883 nội bộ, 9001 WebSocket có mật khẩu)
@@ -168,8 +172,8 @@ sequenceDiagram
     L->>I: MQTT ars/<room>/resp {"mac","room","type":1,"id",...,"via":"ble","ts"} (QoS 1)
     I->>D: UPSERT devices (pin, RSSI, last_seen)
     I->>D: kiểm tra buổi, ghế, ghép MAC → INSERT session_logins
-    I->>L: MQTT ars/<room>/cmd/gw: ATTEND <bitmap>
-    L-->>R: beacon ATTEND chứa bitmap điểm danh → Remote thấy bit của mình → báo đã điểm danh
+    I->>L: MQTT ars/<room>/cmd/gw: ACKS <ghế>:0:<seq>:0:<status> (+ ATTEND <bitmap>)
+    L-->>R: beacon ACKS có đúng seq LOGIN vừa gửi → status 0 = đã điểm danh, khác 0 = lý do bị từ chối
 ```
 
 ### 3.3 Trả lời câu hỏi (ANSWER)
@@ -246,7 +250,7 @@ Trong firmware nRF5 SDK / Zephyr: `BT_DATA(BT_DATA_MANUFACTURER_DATA, {0xFF,0xFF
 | OPENMASK | `A5 12` room + 8 byte mặt nạ câu đang mở (câu p ở bit p−1) — cho phím ◀ ▶ |
 | ACKS | `A5 13` room n + n bản ghi **(ghế, câu, seq, đáp án, status)**, n ≤ 4 — 4 kết quả mới nhất, mỗi ghế hết hạn sau 1,8 s |
 
-Remote chỉ đọc beacon có room trùng room mình nhớ; dùng `n_options` để chặn tại chỗ đáp án vượt số lựa chọn, ATTEND để xác nhận điểm danh, ACKS để xác nhận đúng giao dịch vừa gửi. (Chế độ Bluetooth laptop: phát beacon cần Linux, BlueZ ≥ 5.50; trên Windows/macOS `ble_scan.py` chỉ nghe.)
+Remote chỉ đọc beacon có room trùng room mình nhớ; dùng `n_options` để chặn tại chỗ đáp án vượt số lựa chọn, ACKS để xác nhận đúng giao dịch vừa gửi — cả ANSWER lẫn LOGIN (V3.11: bản ghi LOGIN là `(ghế, 0, seq, 0, status)`; ATTEND chỉ là thông tin). (Chế độ Bluetooth laptop: phát beacon cần Linux, BlueZ ≥ 5.50; trên Windows/macOS `ble_scan.py` chỉ nghe.)
 
 ### 4.2 Dữ liệu gói và lệnh trạng thái
 **Dạng JSON** (gateway in ra mỗi dòng qua USB, hoặc ble_scan.py giải mã ra) — đây là dữ liệu ingest nhận:
@@ -277,7 +281,7 @@ Remote chỉ đọc beacon có room trùng room mình nhớ; dùng `n_options` �
 Server phát lại toàn bộ trạng thái khi có thay đổi (≤ 0,3 s) **và định kỳ mỗi 5 s** (`[ingest] state_refresh_s`), nên bộ thu khởi động lại hay mất một lệnh vẫn tự đúng.
 
 ### 4.2b Gateway nRF52840 cắm USB
-Cắm vào máy chủ (dịch vụ `ars-bridge`, cổng `[gateway] serial`, Linux thường `/dev/ttyACM0`) hoặc vào máy giáo viên qua trình duyệt (bảng điều khiển → **Gateway USB máy này**). **115200 baud, 8N1**:
+Cắm vào máy chủ (dịch vụ `ars-bridge`; `[gateway] serial = auto` tự tìm cổng trả lời `# ARS-GW` — Remote cắm cùng lúc không bị nhận nhầm; `ars gw` xem tình trạng) hoặc vào máy giáo viên qua trình duyệt (bảng điều khiển → **Gateway USB máy này**). **115200 baud, 8N1**:
 - **Lên:** mỗi gói Remote nghe được (byte như mục 4.1) → 1 dòng JSON như mục 4.2, thêm `rssi`. Dòng không bắt đầu bằng `{` là log, bị bỏ qua.
 - **Xuống:** mỗi lệnh trạng thái 1 dòng ASCII (`STATE …`, `ATTEND …`, `OPENMASK …`, `ACKS …`) → gateway mã hoá thành beacon như mục 4.1 và phát liên tục tới khi có lệnh mới cùng loại (`ACKS -` = ngừng phát ACK). Mã hoá / giải mã tham chiếu: `bridge/blecodec.py` (`decode_uplink`, `encode_cmd`).
 - **Lọc bản lặp** ngay trên gateway: mỗi lần bấm (~6 bản trong 150 ms) chỉ 1 dòng lên USB; bản giống hệt trong 300 ms bị bỏ, lần gửi lại sau ≥ 1 s vẫn lên. Dòng `# STAT …` mỗi 5 s là thống kê của gateway.

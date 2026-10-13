@@ -83,8 +83,23 @@ PY
     sudo sed -i "/^\[lan\]/,/^\[/ s/^name *=.*/name = $n/" $DST/config.ini
     sudo mysql ars -e "INSERT INTO settings (k,v) VALUES ('lan_name','$n') ON DUPLICATE KEY UPDATE v=VALUES(v)"
     sudo systemctl restart ars-mdns && echo "Đã đổi: http://$n/gv  ·  http://$n/hs" ;;
-  ports)  # liệt kê cổng serial để tìm gateway
-    python3 -m serial.tools.list_ports -v ;;
+  ports)  # liệt kê cổng serial, đánh dấu cổng có firmware gateway (cổng ars-bridge đang giữ thì không hỏi được — xem ars gw)
+    python3 $DST/bridge/bridge.py --list ;;
+  gw)     # tình trạng gateway nRF52840: dịch vụ, cổng, firmware, thống kê 5 s gần nhất
+    room=$(ini gateway room); room=${room:-1}
+    echo "ars-bridge: $(systemctl is-active ars-bridge 2>/dev/null)   (room $room, [gateway] serial = $(ini gateway serial))"
+    mosquitto_sub -t "ars/$room/gw/status" -C 1 -W 3 2>/dev/null | python3 -c '
+import json, sys, time
+raw = sys.stdin.read().strip()
+if not raw: sys.exit("Chưa có trạng thái gateway (ars-bridge chưa chạy?). Xem: journalctl -u ars-bridge -n 30")
+s = json.loads(raw); g = s.get("gw") or {}
+print("online   :", "CÓ" if s.get("online") else "KHÔNG", " cổng", s.get("port"), " firmware", s.get("fw") or "?",
+      " cập nhật", int(time.time() - s.get("ts", 0)), "s trước")
+print("5 s qua  : nghe", g.get("rx", "?"), "bản gói, gửi lên", g.get("fwd", "?"), ", bỏ bản lặp", g.get("dup", "?"),
+      ", lệnh từ server", g.get("cmd", "?"), ", phát beacon", g.get("adv", "?"), ", room", g.get("room", "?"))
+bad = {k: g[k] for k in ("qdrop", "usbdrop", "adverr", "bad") if g.get(k)}
+print("lỗi      :", bad or "không")'
+    echo "Log trực tiếp: journalctl -u ars-bridge -f" ;;
   mqtt)   # xem mọi bản tin MQTT (gói clicker, lệnh STATE…)
     mosquitto_sub -v -t 'ars/#' ;;
   db)     # mở MariaDB trên terminal, đã chọn sẵn CSDL ars (thoát: exit)
@@ -108,5 +123,5 @@ PY
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway usb|ble | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway usb|ble | gw | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac

@@ -15,10 +15,11 @@ void begin(uint8_t room, uint8_t seat);
 // Change room/seat after the student enters a new ID (filters beacons; clears stale events).
 void setIdentity(uint8_t room, uint8_t seat);
 
-// Remote -> laptop. V3.10: one short non-connectable advertising burst (TX_BURST_MS, scanner off),
-// then the scanner is restarted and stays on; the caller waits for the exact ACK (ACK_LISTEN window).
-// answerCode: 0 for none, 1..10 for A..J.
-void sendPacket(uint8_t type,
+// Remote -> gateway. One short non-connectable advertising burst (TX_BURST_MS). V3.11: the scanner stays on
+// during the burst and the burst ends early once the exact result of THIS transaction is heard; the caller
+// then reads it (takeLoginResult / takeAnswerAck) or keeps waiting for it (ACK_LISTEN window).
+// answerCode: 0 for none, 1..10 for A..J. Returns false if the SoftDevice refused to start advertising.
+bool sendPacket(uint8_t type,
                 uint8_t room,
                 uint8_t seat,
                 uint8_t question,
@@ -27,7 +28,8 @@ void sendPacket(uint8_t type,
                 uint16_t batteryMv);
 
 // Server -> Remote events. These functions consume the event once.
-bool takeLoginAck();
+// V3.11 exact LOGIN result: ACKS record (seat, 0, seq, 0, status). status 0 = logged in.
+bool takeLoginResult(uint8_t& sequence, uint8_t& status);
 bool takeAnswerAck(uint8_t& question, uint8_t& sequence, uint8_t& answerCode, uint8_t& status);
 
 // Latest STATE beacon from server. Returns true only when a new STATE arrived.

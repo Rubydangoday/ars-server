@@ -15,7 +15,7 @@
 
 using namespace GwCodec;
 
-static const char* FW_VERSION = "ARS-GW 3.10";
+static const char* FW_VERSION = "ARS-GW 3.11";
 
 // Đèn xanh dương có sẵn trên SuperMini (P0.15, sáng khi HIGH). Board khác: đổi chân này.
 static constexpr uint32_t GW_LED_PIN = NRF_GPIO_PIN_MAP(0, 15);
@@ -37,7 +37,8 @@ static bool serverAlive = false;
 static bool diagAll = false;
 
 static Dedup dedup;
-static uint32_t cFwd = 0, cDup = 0, cCmd = 0, cBad = 0, cWait = 0, cUsbDrop = 0;
+static uint32_t cFwd = 0, cDup = 0, cCmd = 0, cBad = 0, cWait = 0, cUsbDrop = 0, cProbe = 0;
+static constexpr uint8_t PKT_PROBE = 3;                   // gói đo của Remote (Serial 'u'): chỉ đếm, không gửi server
 static uint32_t lastStatMs = 0;
 static uint32_t ledBlinkUntil = 0;
 
@@ -52,12 +53,12 @@ static void printStats(bool reset) {
     GwRadio::stats(r, reset);
     char b[200];
     snprintf(b, sizeof b,
-             "STAT rx=%lu fwd=%lu dup=%lu qdrop=%lu usbdrop=%lu cmd=%lu bad=%lu wait=%lu room=%d adv=%s upd=%lu adverr=%lu",
-             (unsigned long)r.heard, (unsigned long)cFwd, (unsigned long)cDup, (unsigned long)r.queueDrop,
+             "STAT rx=%lu fwd=%lu dup=%lu probe=%lu qdrop=%lu usbdrop=%lu cmd=%lu bad=%lu wait=%lu room=%d adv=%s upd=%lu adverr=%lu",
+             (unsigned long)r.heard, (unsigned long)cFwd, (unsigned long)cDup, (unsigned long)cProbe, (unsigned long)r.queueDrop,
              (unsigned long)cUsbDrop, (unsigned long)cCmd, (unsigned long)cBad, (unsigned long)cWait,
              roomKnown ? room : -1, r.advertising ? "on" : "off", (unsigned long)r.advUpdates, (unsigned long)r.advErrors);
     logLine(b);
-    if (reset) { cFwd = cDup = cCmd = cBad = cWait = cUsbDrop = 0; }
+    if (reset) { cFwd = cDup = cCmd = cBad = cWait = cUsbDrop = cProbe = 0; }
 }
 
 static void handleLine(char* line) {
@@ -127,7 +128,8 @@ static void forwardUplinks() {
     const uint32_t now = millis();
     while (GwRadio::takeUplink(u)) {
         const bool known = u.len >= 7 && (u.data[1] == PKT_LOGIN || u.data[1] == PKT_ANSWER);
-        const bool dup = known && dedup.seen(u.mac, u.data, u.len, now);
+        const bool probe = u.len >= 6 && u.data[1] == PKT_PROBE;
+        const bool dup = (known || probe) && dedup.seen(u.mac, u.data, u.len, now);
         if (diagAll) {
             char b[96];
             snprintf(b, sizeof b, "RX %02X:%02X:%02X:%02X:%02X:%02X type=%u room=%u id=%u q=%u seq=%u ans=%u rssi=%d%s",
@@ -136,7 +138,14 @@ static void forwardUplinks() {
                      u.len > 5 ? u.data[5] : 0, u.len > 6 ? u.data[6] : 0, u.rssi, dup ? " dup" : "");
             logLine(b);
         }
-        if (!known) continue;                      // PROBE (type 3) và gói lạ: không gửi server
+        if (probe && !dup) {
+            // Đo gói lên (tools/gw_probe_report.py): mỗi seq PROBE khác nhau in đúng 1 dòng.
+            cProbe++;
+            char b[64];
+            snprintf(b, sizeof b, "PROBE seq=%u rssi=%d", u.data[5], u.rssi);
+            logLine(b);
+        }
+        if (!known) continue;                      // PROBE và gói lạ: không gửi server
         if (dup) { cDup++; continue; }
         const size_t n = uplinkJson(u.data, u.len, u.mac, u.rssi, json, sizeof json - 1);
         if (!n) continue;

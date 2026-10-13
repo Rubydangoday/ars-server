@@ -16,7 +16,7 @@ arduino-cli compile --fqbn adafruit:nrf52:feather52840 firmware/ARS_gateway_v3_1
 arduino-cli upload  --fqbn adafruit:nrf52:feather52840 -p /dev/ttyACM0 firmware/ARS_gateway_v3_10
 ```
 
-Cắm gateway vào máy chủ → dịch vụ `ars-bridge` tự mở cổng (`[gateway] serial`, mặc định `/dev/ttyACM0`; xem `ars ports`). Hoặc cắm máy giáo viên → bảng điều khiển → **🔌 Gateway USB máy này** (Chrome/Edge).
+Cắm gateway vào máy chủ → dịch vụ `ars-bridge` tự tìm cổng (`[gateway] serial = auto`: hỏi `v`, chờ `# ARS-GW 3.11`; Remote cắm cùng lúc không bị nhận nhầm) và mở lại khi gateway im lặng > 15 s. Kiểm tra: `ars gw`, `ars ports`. Từng bước: [../../HUONG_DAN_2NRF.md](../../HUONG_DAN_2NRF.md). Hoặc cắm máy giáo viên → bảng điều khiển → **🔌 Gateway USB máy này** (Chrome/Edge).
 
 Chỉ cần board SuperMini trần; không dùng chân nào của mạch Remote Rev J. Đèn: xanh dương có sẵn **P0.15** (`GW_LED_PIN` trong `.ino`).
 
@@ -41,9 +41,9 @@ ACKS <ghế:câu:seq:đáp_án:status,...> | ACKS -
 ```
 **Log** — dòng bắt đầu bằng `# ` (bridge bỏ qua). Mỗi 5 s:
 ```
-# STAT rx=… fwd=… dup=… qdrop=… usbdrop=… cmd=… bad=… wait=… room=… adv=on|off upd=… adverr=…
+# STAT rx=… fwd=… dup=… probe=… qdrop=… usbdrop=… cmd=… bad=… wait=… room=… adv=on|off upd=… adverr=…
 ```
-`rx` = bản gói nghe được (kể cả bản lặp), `fwd` = dòng gửi lên, `dup` = bản lặp đã bỏ, `qdrop`/`usbdrop` = mất do hàng đợi đầy / không ai mở cổng, `cmd`/`bad` = lệnh hợp lệ / sai, `wait` = lệnh đến trước STATE đầu tiên, `adverr` = lỗi SoftDevice khi đổi quảng bá (phải = 0).
+`rx` = bản gói nghe được (kể cả bản lặp), `fwd` = dòng gửi lên, `dup` = bản lặp đã bỏ, `probe` = gói đo PROBE khác nhau (Remote gõ `u`; mỗi gói còn in 1 dòng `# PROBE seq=… rssi=…` để `tools/ble_txn_report.py --probe` tính %), `qdrop`/`usbdrop` = mất do hàng đợi đầy / không ai mở cổng, `cmd`/`bad` = lệnh hợp lệ / sai, `wait` = lệnh đến trước STATE đầu tiên, `adverr` = lỗi SoftDevice khi đổi quảng bá (phải = 0).
 
 Lệnh tay (dừng `ars-bridge`, mở Serial monitor, gõ rồi Enter): `h` trợ giúp · `v` phiên bản · `s` thống kê · `d` bật/tắt in mọi bản gói nghe được (kể cả bản lặp và gói PROBE của Remote).
 
@@ -55,7 +55,7 @@ Lệnh tay (dừng `ars-bridge`, mở Serial monitor, gõ rồi Enter): `h` tr�
 | Lọc bản lặp | Remote phát ~6 bản giống nhau trong 150 ms → chỉ bản đầu được gửi lên; bản giống hệt (MAC + 9 byte) trong **300 ms** bị bỏ. Lần gửi lại của Remote (cách ≥ 1 s) vẫn lên server để gia hạn ACK. Hệ quả: cột "gói trùng" ở trang Thiết bị gần như bằng 0 |
 | Mã hoá beacon | `gw_codec.cpp` — bản C++ của `bridge/blecodec.py` (`encode_cmd`, `decode_uplink`), kiểm tra từng byte bằng `tests/gateway_codec_test.py` |
 | Room | Lấy từ lệnh STATE (server gửi đầu tiên khi bridge mở cổng và mỗi 5 s). Chưa có STATE → chưa phát. Room đổi → bỏ beacon cũ |
-| Phát | 1 bộ quảng bá non-connectable 20 ms, +8 dBm; đổi nội dung mỗi **30 ms**. Có ACK: ACKS ↔ (STATE → ATTEND → OPENMASK) xen kẽ → ACKS ~60 ms/lần, ~16 lần trong 1 s Remote nghe. Không có ACK (`ACKS -`): xoay 3 beacon nền |
+| Phát | 1 bộ quảng bá non-connectable 20 ms, +8 dBm; nhịp 10 ms, đổi khe mỗi **30 ms**. **ACK mới lên sóng ở nhịp 10 ms kế tiếp** và 250 ms đầu chỉ phát ACKS (Remote V3.11 đang quét ngay trong đợt phát của nó); sau đó ACKS ↔ (STATE → ATTEND → OPENMASK) xen kẽ, ~60 ms/lần. Không có ACK (`ACKS -`): xoay 3 beacon nền |
 | Mất server | 15 s không có lệnh → ngừng phát (Remote không thấy câu "đang mở" đã cũ); có lệnh lại → phát tiếp |
 
 Beacon dài nhất (ACKS 4 bản ghi) = 3 byte flags + 4 byte header + 24 byte = 31 byte, vừa quảng bá legacy.

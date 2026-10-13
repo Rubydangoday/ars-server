@@ -15,8 +15,9 @@ port = 1883
 [gateway]
 ; mã lớp (room) mà gateway / laptop này phục vụ — trùng với room_id của lớp trên web
 room = 1
-; cổng USB của gateway nRF52840 (bridge.py, dịch vụ ars-bridge): Windows "COM5", Linux "/dev/ttyACM0", macOS "/dev/cu.usbmodem1101"
-serial = COM5
+; cổng USB của gateway nRF52840 (bridge.py, dịch vụ ars-bridge): auto = tự tìm cổng có firmware gateway (khuyên dùng);
+; hoặc ghi cố định: Windows "COM5", Linux "/dev/ttyACM0", macOS "/dev/cu.usbmodem1101"
+serial = auto
 baud = 115200
 
 [ble]

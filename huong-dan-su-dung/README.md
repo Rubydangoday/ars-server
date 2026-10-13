@@ -12,6 +12,7 @@ Chọn tài liệu theo vai trò của bạn:
 | 💻 **Lập trình viên** (người tiếp quản code) | [lap-trinh-vien.md](lap-trinh-vien.md) | Kiến trúc, thư mục, luồng dữ liệu, giao thức Bluetooth, cách thêm tính năng, test, triển khai |
 
 Tài liệu kỹ thuật khác trong repo:
+- [HUONG_DAN_2NRF.md](../HUONG_DAN_2NRF.md): cài, nạp firmware, chạy mỗi buổi, xử lý sự cố (Remote + gateway USB).
 - [README.md](../README.md): kiến trúc, cây thư mục, giao thức Remote ⇄ gateway ⇄ server.
 - [HUONG_DAN_CAI_DAT.md](../HUONG_DAN_CAI_DAT.md): cài đặt máy chủ trên Ubuntu/Windows, link cố định, lệnh `ars`.
 - [tests/README.md](../tests/README.md): cách chạy kiểm thử.

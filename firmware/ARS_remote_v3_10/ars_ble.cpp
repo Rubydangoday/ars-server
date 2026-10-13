@@ -40,7 +40,17 @@ static volatile uint8_t localSeat = 0;
 #define ARS_UNLOCK() taskEXIT_CRITICAL()
 
 // Events written by BLE callback and consumed in loop().
-static volatile bool loginAckPending = false;
+// V3.11: LOGIN result = exact ACKS record (seat, 0, seq, 0, status). ATTEND is no longer a confirmation:
+// the seat bit is also set when ANOTHER Remote holds the seat, which made V3.10 report a false "logged in".
+static volatile bool loginResultPending = false;
+static volatile uint8_t loginResultSequence = 0;
+static volatile uint8_t loginResultStatus = 0;
+
+// V3.11: transaction currently on air (sendPacket). The scanner stays on during the TX burst and the
+// burst ends early as soon as the exact result for THIS transaction is heard.
+static volatile bool txActive = false;
+static volatile uint8_t txType = 0, txQuestion = 0, txSequence = 0, txAnswer = 0;
+static volatile bool txResultSeen = false;
 static volatile bool answerAckPending = false;
 static volatile uint8_t answerAckQuestion = 0;
 static volatile uint8_t answerAckSequence = 0;
@@ -60,13 +70,6 @@ static volatile uint8_t diagPhase = 0;
 static volatile int32_t diagRssiSum = 0;
 static volatile uint32_t diagRssiN = 0;
 static volatile uint64_t latestOpenMask = 0;
-
-static bool seatBitIsSet(const uint8_t* bitmap, size_t len, uint8_t seat) {
-    const uint8_t byteIndex = static_cast<uint8_t>(seat / 8);
-    const uint8_t bitIndex  = static_cast<uint8_t>(seat % 8);
-    if (byteIndex >= len) return false;
-    return (bitmap[byteIndex] & static_cast<uint8_t>(1u << bitIndex)) != 0;
-}
 
 static void scanCallback(ble_gap_evt_adv_report_t* report) {
     uint8_t msd[32] = {0};
@@ -107,13 +110,8 @@ static void scanCallback(ble_gap_evt_adv_report_t* report) {
     diagRssiSum += report->rssi;
     diagRssiN++;
 
-    if (frame == FRAME_ATTEND) {
-        // [A5, 11, room] + 13-byte attendance bitmap
-        if (dlen >= 16 && seatBitIsSet(&data[3], 13, localSeat)) {
-            loginAckPending = true;
-        }
-    }
-    else if (frame == FRAME_STATE) {
+    // FRAME_ATTEND [A5, 11, room] + 13-byte attendance bitmap: information only since V3.11 (see loginResultPending).
+    if (frame == FRAME_STATE) {
         // V3.8: [A5,10,room,qid,open,n_options] + 13-byte answered bitmap.
         // V3.7 frames had no n_options; accept them with n_options=0 so local
         // validation is disabled rather than rejecting a valid answer.
@@ -174,11 +172,22 @@ static void scanCallback(ble_gap_evt_adv_report_t* report) {
                 const uint8_t status = (recordSize == 5) ? data[base + 4] : 0;
                 if (seat == localSeat) {
                     ARS_LOCK();
-                    answerAckQuestion = qid;
-                    answerAckSequence = seq;
-                    answerAckCode = ans;
-                    answerAckStatus = status;
-                    answerAckPending = true;
+                    if (qid == 0 && ans == 0) {               // V3.11 LOGIN result
+                        loginResultSequence = seq;
+                        loginResultStatus = status;
+                        loginResultPending = true;
+                    } else {
+                        answerAckQuestion = qid;
+                        answerAckSequence = seq;
+                        answerAckCode = ans;
+                        answerAckStatus = status;
+                        answerAckPending = true;
+                    }
+                    if (txActive && seq == txSequence &&
+                        ((txType == TYPE_LOGIN && qid == 0 && ans == 0) ||
+                         (txType == TYPE_ANSWER && qid == txQuestion && ans == txAnswer))) {
+                        txResultSeen = true;                  // stop this TX burst early
+                    }
                     ARS_UNLOCK();
                     break;
                 }
@@ -208,24 +217,25 @@ void setIdentity(uint8_t room, uint8_t seat) {
     ARS_LOCK();
     localRoom = room;
     localSeat = seat;
-    loginAckPending = false;
+    loginResultPending = false;
     answerAckPending = false;
     statePending = false;
     openMaskPending = false;
     ARS_UNLOCK();
 }
 
+// Display/LED keep running while the radio is busy (keys are read again in loop()).
+// Returns early when the exact result of the transaction on air has been heard.
 static void keepUiAlive(uint32_t durationMs) {
-    // Display/LED keep running while the radio is busy (keys are read again in loop()).
     const uint32_t start = millis();
-    while ((uint32_t)(millis() - start) < durationMs) {
+    while ((uint32_t)(millis() - start) < durationMs && !txResultSeen) {
         displayUpdate();
         statusLedUpdate();
         delay(1);
     }
 }
 
-static void startUplinkAdvertising(const uint8_t* manufacturerData, size_t len) {
+static bool startUplinkAdvertising(const uint8_t* manufacturerData, size_t len) {
     Bluefruit.Advertising.stop();
     Bluefruit.Advertising.clearData();
     // V3.10: non-connectable, non-scannable. The default (connectable/scannable) type made the
@@ -235,10 +245,10 @@ static void startUplinkAdvertising(const uint8_t* manufacturerData, size_t len) 
     Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
     Bluefruit.Advertising.addManufacturerData(manufacturerData, len);
     Bluefruit.Advertising.setInterval(ADV_INTERVAL_UNITS, ADV_INTERVAL_UNITS);
-    Bluefruit.Advertising.start(0);
+    return Bluefruit.Advertising.start(0);
 }
 
-void sendPacket(uint8_t type,
+bool sendPacket(uint8_t type,
                 uint8_t room,
                 uint8_t seat,
                 uint8_t question,
@@ -263,14 +273,20 @@ void sendPacket(uint8_t type,
     manufacturerData[1] = static_cast<uint8_t>((COMPANY_ID >> 8) & 0xFF);
     memcpy(&manufacturerData[2], payload, sizeof(payload));
 
-    // V3.10: TX burst with the scanner off (denser advertising), then scan continuously.
-    // The exact ACK cannot be on air before the laptop has received this burst (+ ~40-50 ms
-    // DB/MQTT latency), so listening only after the burst loses nothing.
-    Bluefruit.Scanner.stop();
-    startUplinkAdvertising(manufacturerData, sizeof(manufacturerData));
-    keepUiAlive(TX_BURST_MS);
+    // V3.11: the scanner stays ON during the TX burst. With the USB gateway the exact result is on air
+    // ~40-80 ms after the first advertising event, i.e. INSIDE the 150 ms burst; V3.10 (scanner off) could
+    // only hear it after the burst. The SoftDevice gives advertising events priority over the scan window,
+    // so uplink density is unchanged. The burst stops as soon as this transaction's result is heard.
+    ARS_LOCK();
+    txType = type; txQuestion = question; txSequence = sequence; txAnswer = answerCode;
+    txResultSeen = false;
+    txActive = true;
+    ARS_UNLOCK();
+    const bool ok = startUplinkAdvertising(manufacturerData, sizeof(manufacturerData));
+    if (ok) keepUiAlive(TX_BURST_MS);
     Bluefruit.Advertising.stop();
-    Bluefruit.Scanner.start(0);
+    txActive = false;
+    return ok;
 }
 
 void diagSnapshot(uint32_t counts[5], uint8_t& lastProbePhase, int16_t& avgRssi) {
@@ -283,9 +299,13 @@ void diagSnapshot(uint32_t counts[5], uint8_t& lastProbePhase, int16_t& avgRssi)
     ARS_UNLOCK();
 }
 
-bool takeLoginAck() {
-    if (!loginAckPending) return false;
-    loginAckPending = false;
+bool takeLoginResult(uint8_t& sequence, uint8_t& status) {
+    if (!loginResultPending) return false;
+    ARS_LOCK();
+    sequence = loginResultSequence;
+    status = loginResultStatus;
+    loginResultPending = false;
+    ARS_UNLOCK();
     return true;
 }
 

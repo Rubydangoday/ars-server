@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Phân loại từng giao dịch ANSWER của một Remote từ log serial + log ingest (dùng cho test V3.10).
+"""Phân loại từng giao dịch (ANSWER và LOGIN) của một Remote từ log Serial + log server; đo tốc độ.
 
-  journalctl -u ars-ingest -u ars-ble --since "10 min ago" > server.log
-  python3 tools/ble_txn_report.py serial.log server.log [--seat 1]
+  journalctl -u ars-ingest -u ars-bridge --since "10 min ago" > server.log     (chế độ Bluetooth laptop: -u ars-ble)
+  python3 tools/ble_txn_report.py serial.log server.log [--seat 2]
 
-Mỗi seq trong log serial được xếp vào một loại:
+Mỗi giao dịch (loại + seq) trong log Serial được xếp vào một loại:
   ACK_FIRST   xác nhận ở lần gửi đầu          ACK_RETRY   xác nhận sau khi gửi lại
   NACK        server từ chối có lý do           UPLINK_MISS hết giờ, server không hề thấy seq này
-  ACK_MISS    hết giờ dù server đã NHẬN/TRÙNG seq này (Remote bỏ lỡ ACK)
-Cuối cùng in tỉ lệ và PASS/FAIL theo tiêu chí ≥ 99 % (server nhận, giao dịch có kết quả), timeout ≈ 0.
+  ACK_MISS    hết giờ dù server đã thấy seq này (Remote bỏ lỡ ACK)        ADV_FAIL  Remote không phát được
+Độ trễ: Remote V3.11 in "dt=…ms" (lần gửi đầu → kết quả). In trung vị, P95, lớn nhất.
+
+Đo gói lên (Remote Serial 'u' = 100 gói PROBE; gateway in "PROBE seq=…" vào journal ars-bridge):
+  python3 tools/ble_txn_report.py serial.log server.log --probe
 """
 import argparse
 import re
@@ -16,60 +19,112 @@ from collections import OrderedDict
 
 ap = argparse.ArgumentParser()
 ap.add_argument('serial')
-ap.add_argument('ingest')
-ap.add_argument('--seat', type=int, default=None, help='chỉ xét ghế này trong log ingest')
+ap.add_argument('server')
+ap.add_argument('--seat', type=int, default=None, help='chỉ xét ghế này trong log server')
+ap.add_argument('--probe', action='store_true', help='đo tỉ lệ gói PROBE gateway nghe được')
 a = ap.parse_args()
 
-tx = OrderedDict()                       # seq -> {'retries': n, 'result': ...}
+
+def pct(n, d):
+    return f'{n}/{d} = {n / d:.1%}' if d else '0/0'
+
+
+def quantile(v, q):
+    v = sorted(v)
+    return v[min(len(v) - 1, int(round(q * (len(v) - 1))))] if v else None
+
+
+if a.probe:
+    sent = [int(m.group(1)) for m in re.finditer(r'DIAG TX PROBE seq=(\d+)', open(a.serial, errors='replace').read())]
+    heard = {int(m.group(1)) & 0xFF for m in re.finditer(r'gateway PROBE seq=(\d+)', open(a.server, errors='replace').read())}
+    if not sent:
+        raise SystemExit('Không có dòng "DIAG TX PROBE" trong log Serial (gõ u trên Remote).')
+    got = [s for s in sent if (s & 0xFF) in heard]
+    miss = [s for s in sent if (s & 0xFF) not in heard]
+    print(f'Gói PROBE gateway nghe được: {pct(len(got), len(sent))}   thiếu: {miss[:20]}{"…" if len(miss) > 20 else ""}')
+    print('PASS' if len(got) / len(sent) >= 0.99 else 'FAIL', '(tiêu chí ≥ 99 %)')
+    raise SystemExit(0)
+
+# ---- log Serial của Remote ----
+tx = OrderedDict()                       # (kind, seq) -> {'retries', 'result', 'dt', 'adv_fail'}
 cur = None
 for line in open(a.serial, errors='replace'):
-    m = re.search(r'(TX|RETRY) ANSWER .*?seq=(\d+)', line)
+    m = re.search(r'(TX|RETRY) (ANSWER|LOGIN) .*?seq=(\d+)', line)
     if m:
-        cur = int(m.group(2))
-        t = tx.setdefault(cur, {'retries': 0, 'result': None})
+        cur = (m.group(2), int(m.group(3)))
+        t = tx.setdefault(cur, {'retries': 0, 'result': None, 'dt': None, 'adv_fail': 0})
         if m.group(1) == 'RETRY':
             t['retries'] += 1
         continue
     if cur is None:
         continue
-    if 'ACK ANSWER EXACT' in line and not line.lstrip().startswith('NACK'):
-        tx[cur]['result'] = 'ACK'
-    elif 'NACK ANSWER EXACT' in line:
-        tx[cur]['result'] = 'NACK'
+    if 'ADV START FAIL' in line:
+        tx[cur]['adv_fail'] += 1
+        continue
+    kind = cur[0]
+    res = None
+    if re.search(rf'(?<!N)ACK {kind} EXACT', line) or (kind == 'LOGIN' and 'ACK LOGIN:' in line):
+        res = 'ACK'
+    elif f'NACK {kind} EXACT' in line:
+        res = 'NACK'
     elif 'ACK TIMEOUT' in line:
-        tx[cur]['result'] = 'TIMEOUT'
+        res = 'TIMEOUT'
+    if res:
+        tx[cur]['result'] = res
+        d = re.search(r'dt=(\d+)ms', line)
+        tx[cur]['dt'] = int(d.group(1)) if d else None
 
-seen = set()
-for line in open(a.ingest, errors='replace'):
-    m = (re.search(r'(NHẬN|TRÙNG|LOẠI)\s+.*?ghế\s*0?(\d+).*?seq=\s*0*(\d+)', line)
-         or re.search(r'(RF RX ANSWER) room=\d+ seat=(\d+) q=\d+ seq=0*(\d+)', line))   # log ars-ble cũng dùng được
+# ---- log server: ingest (NHẬN / TRÙNG / LOẠI / ĐIỂM DANH) hoặc ars-ble (DIAG RF RX) ----
+seen = {'ANSWER': set(), 'LOGIN': set()}
+for line in open(a.server, errors='replace'):
+    m = re.search(r'(NHẬN|TRÙNG)\s+ghế\s*0?(\d+).*?seq=\s*0*(\d+)', line)
     if m and (a.seat is None or int(m.group(2)) == a.seat):
-        seen.add(int(m.group(3)))
+        seen['ANSWER'].add(int(m.group(3)))
+        continue
+    m = re.search(r'LOẠI\s+\S+\s+ghế\s*0?(\d+)\s+câu\s+(\S+)\s+seq=\s*0*(\d+)', line)
+    if m and (a.seat is None or int(m.group(1)) == a.seat):
+        seen['LOGIN' if m.group(2) == '0' else 'ANSWER'].add(int(m.group(3)))
+        continue
+    m = re.search(r'RF RX (ANSWER|LOGIN) room=\d+ seat=(\d+).*?seq=0*(\d+)', line)
+    if m and (a.seat is None or int(m.group(2)) == a.seat):
+        seen[m.group(1)].add(int(m.group(3)))
+        continue
+    m = re.search(r'(ĐIỂM DANH)(?: lại)? ghế\s*0?(\d+)\s+seq=\s*0*(\d+)', line)
+    if m and (a.seat is None or int(m.group(2)) == a.seat):
+        seen['LOGIN'].add(int(m.group(3)))
 
 rows, cnt = [], {}
-for seq, t in tx.items():
+for (kind, seq), t in tx.items():
     r = t['result']
+    server = seq in seen[kind]
     if r == 'ACK':
         cls = 'ACK_FIRST' if t['retries'] == 0 else 'ACK_RETRY'
     elif r == 'NACK':
         cls = 'NACK'
     elif r == 'TIMEOUT':
-        cls = 'ACK_MISS' if seq in seen else 'UPLINK_MISS'
+        cls = 'ADV_FAIL' if t['adv_fail'] and not server else ('ACK_MISS' if server else 'UPLINK_MISS')
     else:
         cls = 'UNFINISHED'
+    if r in ('ACK', 'NACK'):
+        server = True                      # có kết quả chính xác ⇒ server chắc chắn đã nhận
     cnt[cls] = cnt.get(cls, 0) + 1
-    rows.append((seq, t['retries'], 'yes' if seq in seen else 'NO', cls))
+    rows.append((kind, seq, t['retries'], 'yes' if server else 'NO', t['dt'], cls))
 
-print(f'{"seq":>4} {"retries":>7} {"server":>6}  result')
+print(f'{"loại":<6} {"seq":>4} {"retries":>7} {"server":>6} {"dt ms":>6}  result')
 for r in rows:
-    print(f'{r[0]:>4} {r[1]:>7} {r[2]:>6}  {r[3]}')
-n = sum(v for k, v in cnt.items() if k != 'UNFINISHED')
+    print(f'{r[0]:<6} {r[1]:>4} {r[2]:>7} {r[3]:>6} {r[4] if r[4] is not None else "-":>6}  {r[5]}')
+done_rows = [r for r in rows if r[5] != 'UNFINISHED']
+n = len(done_rows)
 if not n:
-    raise SystemExit('Không có giao dịch nào trong log serial.')
-srv = sum(1 for r in rows if r[2] == 'yes' and r[3] != 'UNFINISHED')
-done = cnt.get('ACK_FIRST', 0) + cnt.get('ACK_RETRY', 0) + cnt.get('NACK', 0)
+    raise SystemExit('Không có giao dịch nào kết thúc trong log Serial.')
+srv = sum(1 for r in done_rows if r[3] == 'yes')
+ok = cnt.get('ACK_FIRST', 0) + cnt.get('ACK_RETRY', 0) + cnt.get('NACK', 0)
+dts = [r[4] for r in done_rows if r[4] is not None and r[5] in ('ACK_FIRST', 'ACK_RETRY', 'NACK')]
 print('\n' + ', '.join(f'{k} {v}' for k, v in sorted(cnt.items())))
-print(f'Server nhận: {srv}/{n} = {srv / n:.1%}   Giao dịch có kết quả: {done}/{n} = {done / n:.1%}   '
-      f'Lần đầu: {cnt.get("ACK_FIRST", 0) / n:.1%}   Timeout: {n - done}')
-ok = srv / n >= 0.99 and done / n >= 0.99
-print('PASS' if ok else 'FAIL', '(tiêu chí: server nhận ≥ 99 %, giao dịch có kết quả ≥ 99 %)')
+print(f'Server nhận: {pct(srv, n)}   Có kết quả chính xác: {pct(ok, n)}   '
+      f'ACK lần đầu: {pct(cnt.get("ACK_FIRST", 0), n)}   Timeout: {n - ok}')
+if dts:
+    print(f'Độ trễ OK → kết quả: trung vị {quantile(dts, .5)} ms, P95 {quantile(dts, .95)} ms, lớn nhất {max(dts)} ms ({len(dts)} giao dịch)')
+passed = srv / n >= 0.99 and ok / n >= 0.99 and cnt.get('ACK_FIRST', 0) / n >= 0.95 and (not dts or quantile(dts, .95) < 300)
+print('PASS' if passed else 'FAIL',
+      '(1 Remote: server nhận ≥ 99 %, có kết quả ≥ 99 %, ACK lần đầu ≥ 95 %, P95 < 300 ms)')
