@@ -1,6 +1,6 @@
 # Hướng dẫn sử dụng ARS
 
-ARS (Audience Response System) là hệ thống hỏi–đáp trên lớp bằng **Remote nRF52840**. Học sinh bấm Remote, **Bluetooth của laptop giáo viên** thu đáp án, kết quả hiện ngay trên web. Ngoài giờ học, ARS là một trang học tập: bài tập về nhà, bài giảng, ôn câu sai, trợ lý AI, thi đua, và trang theo dõi cho phụ huynh.
+ARS (Audience Response System) là hệ thống hỏi–đáp trên lớp bằng **Remote nRF52840**. Học sinh bấm Remote, **gateway nRF52840 cắm USB vào laptop giáo viên** thu đáp án, kết quả hiện ngay trên web. Ngoài giờ học, ARS là một trang học tập: bài tập về nhà, bài giảng, ôn câu sai, trợ lý AI, thi đua, và trang theo dõi cho phụ huynh.
 
 Chọn tài liệu theo vai trò của bạn:
 
@@ -12,7 +12,7 @@ Chọn tài liệu theo vai trò của bạn:
 | 💻 **Lập trình viên** (người tiếp quản code) | [lap-trinh-vien.md](lap-trinh-vien.md) | Kiến trúc, thư mục, luồng dữ liệu, giao thức Bluetooth, cách thêm tính năng, test, triển khai |
 
 Tài liệu kỹ thuật khác trong repo:
-- [README.md](../README.md): kiến trúc, cây thư mục, giao thức Remote ⇄ laptop ⇄ server.
+- [README.md](../README.md): kiến trúc, cây thư mục, giao thức Remote ⇄ gateway ⇄ server.
 - [HUONG_DAN_CAI_DAT.md](../HUONG_DAN_CAI_DAT.md): cài đặt máy chủ trên Ubuntu/Windows, link cố định, lệnh `ars`.
 - [tests/README.md](../tests/README.md): cách chạy kiểm thử.
 

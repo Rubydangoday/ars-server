@@ -2531,4 +2531,7 @@ return [
     'Cho giáo viên, học sinh, phụ huynh đăng nhập bằng tài khoản Google đã liên kết. Google chỉ chấp nhận địa chỉ' => 'Let teachers, students and parents sign in with a linked Google account. Google only accepts addresses',
     'Tài khoản không tự ghép theo email: mỗi người đăng nhập bằng mật khẩu một lần rồi bấm “Liên kết” trong trang tài khoản. Phụ huynh mới có thể đăng ký thẳng bằng Google kèm mã mời.' => 'Accounts are not matched by email: each person signs in with their password once and clicks “Link” on their account page. New parents can sign up directly with Google plus an invite code.',
     'Đã lưu cài đặt đăng nhập Google.' => 'Google sign-in settings saved.',
+    // ---- v22: quay lại gateway nRF52840 cắm USB làm mặc định
+    'Chưa có gateway: dùng tạm Bluetooth của laptop bằng lệnh' => 'No gateway yet: use the laptop\'s Bluetooth for now with',
+    'quay lại gateway' => 'back to the gateway',
 ];

@@ -4,8 +4,8 @@
 # Kết quả:
 #   - mã nguồn ở /opt/ars-server, cấu hình /opt/ars-server/config.ini (mật khẩu DB tự sinh)
 #   - web: http://<máy>/gv (giáo viên)  http://<máy>/hs (học sinh)  — trong LAN còn có tên cố định http://ars.local/…
-#   - dịch vụ systemd: ars-ingest (luôn chạy), ars-ble (Bluetooth laptop ⇄ Remote nRF52840), ars-mdns (tên ars.local)
-#     (ars-bridge cho gateway nRF52840 cắm USB được cài sẵn nhưng tắt — bật bằng: sudo ars gateway usb)
+#   - dịch vụ systemd: ars-ingest (luôn chạy), ars-bridge (gateway nRF52840 cắm USB ⇄ MQTT), ars-mdns (tên ars.local)
+#     (ars-ble — thu thẳng bằng Bluetooth của laptop, không cần gateway — được cài sẵn nhưng tắt: sudo ars gateway ble)
 #   - MQTT: 1883 trong máy, WebSocket /mqtt qua Apache
 #   - link Internet cố định (tuỳ chọn): sudo ars public on   (Tailscale Funnel)
 set -euo pipefail
@@ -28,10 +28,10 @@ apt-get install -y -qq python3-bleak >/dev/null 2>&1 || pip3 install -q --break-
 
 say "2/7 Chép mã nguồn vào $DST"
 id -u $SVC_USER >/dev/null 2>&1 || useradd --system --home "$DST" --shell /usr/sbin/nologin $SVC_USER
-usermod -aG dialout,bluetooth $SVC_USER       # Bluetooth của máy (ars-ble) · cổng USB gateway (/dev/ttyACM*)
+usermod -aG dialout,bluetooth $SVC_USER       # cổng USB gateway (/dev/ttyACM*) · Bluetooth của máy (ars-ble, tuỳ chọn)
 getent group $SVC_USER >/dev/null && usermod -aG $SVC_USER www-data
 mkdir -p "$DST"
-rsync -a --delete --exclude config.ini --exclude .gateway-usb --exclude .git --exclude '__pycache__' "$SRC"/ "$DST"/
+rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' "$SRC"/ "$DST"/
 chown -R root:root "$DST"; chmod -R a+rX "$DST"
 
 say "3/7 Khởi động MariaDB và Mosquitto"
@@ -109,15 +109,15 @@ a2enconf -q ars
 if [ $HAS_SYSTEMD = 1 ]; then systemctl enable -q apache2; systemctl restart apache2   # restart: www-data nhận nhóm ars
 else apachectl -k stop 2>/dev/null || true; sleep 1; apachectl -k start; fi
 
-say "6/7 Dịch vụ ingest (luôn chạy) và ars-ble (Bluetooth của máy chủ)"
+say "6/7 Dịch vụ ingest (luôn chạy) và bridge (gateway nRF52840 cắm USB)"
 if [ $HAS_SYSTEMD = 1 ]; then
     cp "$DST"/deploy/ars-ingest.service "$DST"/deploy/ars-ble.service "$DST"/deploy/ars-bridge.service /etc/systemd/system/
     systemctl daemon-reload
     systemctl enable -q bluetooth 2>/dev/null || true
     systemctl enable -q ars-ingest
     systemctl restart ars-ingest
-    if systemctl is-enabled -q ars-bridge 2>/dev/null && [ -f "$DST/.gateway-usb" ]; then systemctl restart ars-bridge   # đã chọn gateway USB
-    else systemctl disable -q --now ars-bridge 2>/dev/null || true; systemctl enable -q ars-ble; systemctl restart ars-ble; fi
+    if systemctl is-enabled -q ars-ble 2>/dev/null && [ -f "$DST/.gateway-ble" ]; then systemctl restart ars-ble   # đã chọn Bluetooth laptop
+    else systemctl disable -q --now ars-ble 2>/dev/null || true; systemctl enable -q ars-bridge; systemctl restart ars-bridge; fi
 else
     echo "   (không có systemd) tự chạy: sudo -u $SVC_USER python3 $DST/ingest/ingest.py &"
 fi
@@ -147,6 +147,7 @@ echo "   Học sinh  : http://$LANNAME/hs   hoặc  http://${IP:-<IP-máy>}/hs"
 if [ -n "$PUB" ]; then echo "   Internet  : $PUB/gv   ·   $PUB/hs"
 else echo "   Internet  : chưa bật — chạy  sudo ars public on  để có link https cố định dùng ở mọi nơi"; fi
 echo " Lệnh tiện ích: ars links | ars status | ars logs | ars watch | ars db | ars sim 30 | ars public on"
-echo " Remote nRF52840: máy chủ nghe bằng Bluetooth của chính nó (dịch vụ ars-ble, room = [gateway] room trong $CFG)."
-echo "          Kiểm tra Remote phát đúng gói: sudo ars ble   ·   dùng gateway nRF52840 cắm USB thay thế: sudo ars gateway usb"
+echo " Gateway nRF52840: cắm USB vào máy chủ (dịch vụ ars-bridge; sửa [gateway] serial trong $CFG nếu không phải /dev/ttyACM0,"
+echo "          rồi sudo systemctl restart ars-bridge) — hoặc cắm máy GV, bấm \"Gateway USB máy này\" trên bảng điều khiển."
+echo "          Chưa có gateway: dùng tạm Bluetooth của máy chủ: sudo ars gateway ble   (quay lại: sudo ars gateway usb)"
 echo "────────────────────────────────────────────────────────────"

@@ -13,14 +13,14 @@ host = 127.0.0.1
 port = 1883
 
 [gateway]
-; mã lớp (room) mà laptop này phục vụ — trùng với room_id của lớp trên web
+; mã lớp (room) mà gateway / laptop này phục vụ — trùng với room_id của lớp trên web
 room = 1
-; (chỉ khi dùng gateway nRF52840 cắm USB — bridge.py) cổng USB: Windows "COM5", Linux "/dev/ttyACM0"
+; cổng USB của gateway nRF52840 (bridge.py, dịch vụ ars-bridge): Windows "COM5", Linux "/dev/ttyACM0", macOS "/dev/cu.usbmodem1101"
 serial = COM5
 baud = 115200
 
 [ble]
-; Thu sóng Remote bằng Bluetooth của laptop (bridge/ble_scan.py, dịch vụ ars-ble)
+; (tuỳ chọn, khi không có gateway — sudo ars gateway ble) thu Remote bằng Bluetooth của laptop (bridge/ble_scan.py, dịch vụ ars-ble)
 adapter = hci0
 ; mã công ty trong Manufacturer Data mà firmware Remote dùng (0xFFFF = mã thử nghiệm)
 company_id = 0xFFFF

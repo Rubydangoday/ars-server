@@ -28,6 +28,8 @@ python3 tests/oauth_integration.py /tmp/ars-smoke.json
 
 `v11_integration.py` cần migration 006 và PHP server nhiều worker, vì nút Sync to Cloud gọi lại chính server thử (Cloud = cùng server, giáo viên 2 nhận dữ liệu của giáo viên 1): `PHP_CLI_SERVER_WORKERS=4 ARS_CONFIG=/path/test.ini php -S 127.0.0.1:8091 -t web`. Zalo/SMS dùng stub localhost:8093; test tự khôi phục settings thông báo trong finally.
 
+`gateway_codec_test.py` không cần DB hay server: biên dịch `firmware/ARS_gateway_v3_10/gw_codec.cpp` bằng g++ (cờ `-Werror`) cùng `tests/gateway_codec_harness.cpp`, rồi so từng byte với `bridge/blecodec.py` (lệnh do `ingest.state_cmds` tạo, trường hợp biên, 4000 dòng ngẫu nhiên), so JSON gói Remote, và kiểm lọc bản lặp 300 ms. Không có g++ thì bỏ qua (`passed: 0`). Phần radio (`gw_radio.cpp`) chỉ kiểm được trên phần cứng: `firmware/TEST_V3_10.md`.
+
 `extended_integration.py` mở stub AI localhost:8092, tạm đổi settings AI của DB thử nghiệm và khôi phục trong finally. Không gọi API AI thật. Kết quả smoke chứa thông tin tài khoản test, không đưa output đó lên server công khai.
 
 Kiểm tra cú pháp: `php -l` từng file PHP, `node --check` JS, `python3 -m py_compile ingest/ingest.py`. Test HTTP không chứng minh JavaScript/microphone chạy đúng trên mọi trình duyệt; test ingest không giả lập RF hoặc MQTT broker.

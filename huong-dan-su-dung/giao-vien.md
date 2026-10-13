@@ -21,7 +21,7 @@
 
 ## 1. Chuẩn bị
 
-**Máy chủ:** laptop cài ARS (xem [HUONG_DAN_CAI_DAT.md](../HUONG_DAN_CAI_DAT.md)). Laptop phải **bật Bluetooth** trong giờ học, vì nó thu đáp án từ Remote.
+**Máy chủ:** laptop cài ARS (xem [HUONG_DAN_CAI_DAT.md](../HUONG_DAN_CAI_DAT.md)). Cắm **gateway nRF52840** vào cổng USB của laptop trong giờ học, vì nó thu đáp án từ Remote.
 
 **Đăng nhập:** mở `http://ars.local/gv` (hoặc link quản trị viên gửi).
 - Lần đầu cài máy chủ: trang đăng nhập cho tạo **tài khoản quản trị**.
@@ -95,7 +95,7 @@ Kho đề dùng chung giữa các giáo viên. Từ một bộ câu hỏi có th
 ### 4.1 Bắt đầu buổi
 1. Vào **lớp** → khung **Bắt đầu buổi học**: chọn **buổi**, **bộ câu hỏi**, **loại** (buổi học / kiểm tra), tuỳ chọn *Cho học sinh đổi đáp án khi câu còn mở*.
 2. Bấm **Bắt đầu** → mở **bảng điều khiển** buổi học.
-3. Trên bảng điều khiển, dòng trạng thái phải là **Bluetooth laptop: đang nghe**. Nếu hiện *chưa bật*: bật Bluetooth của laptop, hoặc nhờ người quản lý máy chủ chạy `ars status`.
+3. Trên bảng điều khiển, dòng trạng thái phải là **Gateway: đang nhận**. Nếu hiện *chưa kết nối*: kiểm tra gateway đã cắm USB, hoặc nhờ người quản lý máy chủ chạy `ars status`. Gateway cắm vào máy của bạn (không phải máy chủ): bấm **🔌 Gateway USB máy này** (Chrome/Edge).
 
 ### 4.2 Điểm danh
 Học sinh bật Remote, nhập **số ghế** rồi bấm **OK**. Ô ghế tương ứng trên bảng điều khiển chuyển màu khi đã điểm danh; Remote của em sáng đèn xanh.
@@ -184,11 +184,11 @@ Phụ huynh quên mật khẩu: cấp **mã mời mới** cho em đó.
 ## 10. Thiết bị Remote
 
 **Thêm → Thiết bị**:
-- **Bộ thu Bluetooth**: trạng thái laptop đang nghe (gói/giây, lần cập nhật cuối).
+- **Gateway**: trạng thái gateway đang nhận (cổng, gói/giây, lần cập nhật cuối).
 - **Clicker**: mọi Remote máy chủ đã nghe thấy, gồm địa chỉ (MAC), **số trên vỏ** (bạn tự đặt), room, ghế gần nhất, **pin**, **RSSI** (độ mạnh sóng), lần cuối thấy, tỉ lệ gói trùng.
 - **Ghép Remote với học sinh**: gắn cố định một Remote cho một số ghế. Remote khác bấm vào ghế đó sẽ bị từ chối, chống mượn máy bấm hộ. Nên đổi ghép ngoài giờ học.
 
-Đọc nhanh: pin dưới khoảng 2,6 V là cần thay pin. RSSI càng âm (ví dụ −90) là càng xa laptop. Tỉ lệ gói trùng cao là bình thường, vì mỗi lần bấm Remote phát một đợt khoảng 6 gói cùng nội dung.
+Đọc nhanh: pin dưới khoảng 2,6 V là cần thay pin. RSSI càng âm (ví dụ −90) là càng xa gateway. Gateway đã lọc các bản lặp trong một lần bấm, nên "gói trùng" còn lại chủ yếu là các lần Remote phải gửi lại vì chưa thấy xác nhận: Remote nào có tỉ lệ này cao thường ở xa hoặc bị che sóng.
 
 ---
 
@@ -196,7 +196,7 @@ Phụ huynh quên mật khẩu: cấp **mã mời mới** cho em đó.
 
 **Cài đặt** (menu tài khoản góc phải):
 - **Đường dẫn cố định**: link cho giáo viên/học sinh trong mạng trường và qua Internet, có nút **Chép** và **QR**.
-- **Kết nối clicker**: cách máy chủ thu Remote (Bluetooth laptop, hoặc gateway USB tuỳ chọn).
+- **Kết nối clicker**: cách máy chủ thu Remote (gateway cắm máy chủ, hoặc cắm máy giáo viên qua trình duyệt).
 - **Trợ lý AI**: chọn nhà cung cấp:
   - **Cơ bản** (không cần mạng, gợi ý đơn giản).
   - **Google Gemini** (có gói miễn phí): lấy API key ở Google AI Studio bằng **Gmail cá nhân**, dán vào ô key, bấm **Kiểm tra** rồi **Lưu**.
@@ -218,8 +218,8 @@ Chỉ tài khoản **quản trị** thấy:
 
 ## 13. Câu hỏi thường gặp
 
-**Bảng điều khiển báo "Bluetooth laptop: chưa bật".**
-Bật Bluetooth của laptop. Trên máy chủ chạy `ars status`, xem `ars-ble` phải là `active`; nếu không, chạy `sudo systemctl restart ars-ble`.
+**Bảng điều khiển báo "Gateway: chưa kết nối".**
+Kiểm tra gateway đã cắm USB. Trên máy chủ chạy `ars status`, xem `ars-bridge` phải là `active`; `ars ports` để xem cổng (sai cổng thì sửa `[gateway] serial` trong `config.ini`), rồi `sudo systemctl restart ars-bridge`.
 
 **Học sinh bấm mà ô không đổi màu.**
 - Remote nhớ sai room. Em nhập lại số ghế; room phải trùng mã lớp.
@@ -232,7 +232,7 @@ Bật Bluetooth của laptop. Trên máy chủ chạy `ars status`, xem `ars-ble
 Ghế đã có Remote khác điểm danh thì máy sau bị từ chối. Bấm ô ghế để giải phóng nếu cần.
 
 **Mất Internet có dạy được không?**
-Được. Máy chủ chạy trên laptop, Remote gửi thẳng tới Bluetooth của laptop. Chỉ AI (Gemini/Claude/OpenAI) và đồng bộ Cloud cần Internet.
+Được. Máy chủ chạy trên laptop, Remote gửi qua gateway cắm USB. Chỉ AI (Gemini/Claude/OpenAI) và đồng bộ Cloud cần Internet.
 
 **AI báo lỗi 403 / 404 / 503.**
 - 403: dự án Google bị chặn, tạo key bằng Gmail cá nhân.

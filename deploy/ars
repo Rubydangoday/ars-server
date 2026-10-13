@@ -9,12 +9,13 @@ case "${1:-}" in
     done
     ;;
   logs)   journalctl -u ars-ingest -u ars-ble -u ars-bridge -f -n 50 ;;
-  restart) svc=ars-ble; systemctl is-enabled -q ars-bridge 2>/dev/null && svc=ars-bridge
+  restart) svc=ars-bridge; systemctl is-enabled -q ars-ble 2>/dev/null && svc=ars-ble
     sudo systemctl restart ars-ingest $svc && echo "đã khởi động lại ingest + $svc" ;;
   ble)    # in các gói quảng bá Bluetooth máy chủ nghe được (kiểm tra firmware Remote); dừng dịch vụ ars-ble trong lúc xem
+    was=0; systemctl is-active -q ars-ble 2>/dev/null && was=1
     sudo systemctl stop ars-ble; sudo rfkill unblock bluetooth 2>/dev/null
     echo "Bấm nút trên Remote — dòng '→ ARS' là gói đúng định dạng. Ctrl+C để thoát."
-    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/bridge/ble_scan.py --dump; sudo systemctl start ars-ble ;;
+    sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/bridge/ble_scan.py --dump; [ $was = 1 ] && sudo systemctl start ars-ble ;;
   ble-tune) # thông số radio BlueZ (Bước 2): ars ble-tune show | scan <chu kỳ ms> <cửa sổ ms> | rotate <ms> | reset
     conf=/etc/bluetooth/main.conf
     case "${2:-show}" in
@@ -44,15 +45,15 @@ else:
         s = setkey(s, k, None)
 open(conf, 'w').write(s)
 PY
-        sudo systemctl restart bluetooth && sleep 2 && sudo systemctl restart ars-ble
-        echo "Đã áp dụng ($2 ${3:-} ${4:-}); bluetooth + ars-ble đã khởi động lại. Xem: ars ble-tune show" ;;
+        sudo systemctl restart bluetooth && sleep 2 && { systemctl is-enabled -q ars-ble 2>/dev/null && sudo systemctl restart ars-ble; true; }
+        echo "Đã áp dụng ($2 ${3:-} ${4:-}); bluetooth (và ars-ble nếu đang dùng) đã khởi động lại. Xem: ars ble-tune show" ;;
       *) echo "Dùng: ars ble-tune show | scan <chu kỳ ms> <cửa sổ ms> | rotate <ms> | reset" ;;
     esac ;;
-  gateway) # chọn cách thu sóng: ars gateway ble (Bluetooth của máy, mặc định) | usb (gateway nRF52840 cắm USB)
+  gateway) # chọn cách thu sóng: ars gateway usb (gateway nRF52840 cắm USB, mặc định) | ble (Bluetooth của máy, không cần gateway)
     case "${2:-}" in
-      usb) sudo systemctl disable --now ars-ble; sudo systemctl enable --now ars-bridge; sudo touch $DST/.gateway-usb; echo "Đang dùng gateway nRF52840 cắm USB (ars-bridge)" ;;
-      ble) sudo systemctl disable --now ars-bridge; sudo systemctl enable --now ars-ble; sudo rm -f $DST/.gateway-usb; echo "Đang dùng Bluetooth của máy chủ (ars-ble)" ;;
-      *) systemctl is-enabled -q ars-bridge 2>/dev/null && echo "usb (ars-bridge)" || echo "ble (ars-ble)"; echo "Đổi: ars gateway ble | usb" ;;
+      usb) sudo systemctl disable --now ars-ble; sudo systemctl enable --now ars-bridge; sudo rm -f $DST/.gateway-ble $DST/.gateway-usb; echo "Đang dùng gateway nRF52840 cắm USB (ars-bridge)" ;;
+      ble) sudo systemctl disable --now ars-bridge; sudo systemctl enable --now ars-ble; sudo touch $DST/.gateway-ble; echo "Đang dùng Bluetooth của máy chủ (ars-ble)" ;;
+      *) systemctl is-enabled -q ars-ble 2>/dev/null && echo "ble (ars-ble)" || echo "usb (ars-bridge)"; echo "Đổi: ars gateway usb | ble" ;;
     esac ;;
   sim)    # chạy thử không cần phần cứng: ars sim [số Remote] [room] — giả lập Remote nRF52840 ở tầng MQTT
     sudo -u ars ARS_CONFIG=$DST/config.ini python3 $DST/tools/sim_clickers.py --room "${3:-1}" -n "${2:-30}" --duration 300 ;;
@@ -107,5 +108,5 @@ PY
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway ble|usb | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway usb|ble | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac

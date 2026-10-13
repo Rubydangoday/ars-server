@@ -13,8 +13,9 @@ page_head(t('Điều khiển') . ' — ' . $ses['class_name'], 'session.php');
     </div>
     <div class="ctl-actions">
       <span class="head-live" id="head-live" aria-live="off"></span>
-      <span class="tag topic" title="<?= te('Remote nRF52840 phát Bluetooth, laptop chạy máy chủ thu trực tiếp') ?>">🔵 Bluetooth · nRF52840</span>
-      <span id="gw" class="gw">Bluetooth …</span>
+      <span class="tag topic" title="<?= te('Remote nRF52840 gửi qua gateway nRF52840 cắm USB') ?>">🔵 Bluetooth · nRF52840</span>
+      <span id="gw" class="gw">Gateway …</span>
+      <a class="btn" id="gw-usb" href="gateway.php?session=<?= (int)$ses['id'] ?>" target="ars-gw" title="<?= te('Cắm gateway vào máy này, dùng Chrome/Edge') ?>">🔌 <?= te('Gateway USB máy này') ?></a>
       <a class="btn" href="projector.php?id=<?= (int)$ses['id'] ?>" target="_blank"><?= te('Mở màn chiếu ↗') ?></a>
       <a class="btn" href="results.php?id=<?= (int)$ses['id'] ?>"><?= te('Kết quả') ?></a>
       <button class="danger" data-act="end" data-confirm="<?= te('Kết thúc buổi học? Mọi câu đang mở sẽ đóng.') ?>"><?= te('Kết thúc buổi') ?></button>

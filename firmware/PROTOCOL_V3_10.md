@@ -2,6 +2,8 @@
 
 Định dạng byte **giữ nguyên V3.9** (Remote V3.9 vẫn nói chuyện được với server V3.10 và ngược lại). V3.10 chỉ đổi **lịch radio** (firmware) và **cách server chọn / phát ACK**. Mã tham chiếu: `bridge/blecodec.py`.
 
+> Bộ thu mặc định là **gateway nRF52840 cắm USB** (`bridge.py`, README mục 4.2b): gateway đóng vai "laptop" trong tài liệu này — quét gói Remote và phát beacon STATE/ATTEND/OPENMASK/ACKS với cùng định dạng byte. Các mục về BlueZ / `ble_scan.py` (dừng quét, xoay vòng quảng bá) chỉ áp dụng khi dùng Bluetooth laptop (`sudo ars gateway ble`).
+
 ## Remote → laptop (ADV_NONCONN_IND, Manufacturer Data, company `0xFFFF`)
 
 ```text

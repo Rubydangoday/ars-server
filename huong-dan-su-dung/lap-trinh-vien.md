@@ -24,8 +24,8 @@ Tài liệu này giúp người mới đọc hiểu và sửa ARS mà không ph�
 ## 1. Bức tranh tổng thể
 
 ```
-Remote nRF52840 ──BLE──▶ bridge/ble_scan.py ──MQTT──▶ ingest/ingest.py ──SQL──▶ MariaDB ◀──SQL── web/ (PHP, Apache)
-               ◀─beacon─  (dịch vụ ars-ble)  ◀─lệnh──   (dịch vụ ars-ingest)                  ▲
+Remote nRF52840 ──BLE──▶ Gateway nRF52840 ──USB──▶ bridge/bridge.py ──MQTT──▶ ingest/ingest.py ──SQL──▶ MariaDB ◀──SQL── web/ (PHP, Apache)
+               ◀─beacon─  (cắm laptop)     ◀─serial─ (dịch vụ ars-bridge) ◀─lệnh── (dịch vụ ars-ingest)                ▲
                                                                                                └── trình duyệt GV / HS / PH
 ```
 
@@ -41,7 +41,7 @@ Ba nguyên tắc thiết kế (đừng phá):
 | Web | PHP 8.1+ (đang chạy 8.3), **không framework**, PDO MariaDB, HTML render phía server + JS thuần |
 | CSDL | MariaDB 10.11 (CSDL `ars`) |
 | Nhận gói | Python 3 + `paho-mqtt` + `pymysql` |
-| Bluetooth | Python `bleak` (quét) + `dbus-fast` (phát beacon qua BlueZ) |
+| Gateway USB | Python `pyserial` (`bridge.py`); tuỳ chọn Bluetooth laptop: `bleak` + `dbus-fast` (BlueZ) |
 | Message broker | Mosquitto: 1883 chỉ trong máy, WebSocket 9001 qua Apache `/mqtt` |
 | Máy chủ web | Apache 2 + mod_php |
 | Hệ điều hành mục tiêu | Ubuntu 22.04 / 24.04 (systemd) |
@@ -60,8 +60,9 @@ Ba nguyên tắc thiết kế (đừng phá):
 | `web/lang/en.php` | Từ điển Việt → Anh (mảng PHP) |
 | `web/assets/` | CSS, JS (`control.js` bảng điều khiển, `compose.js` soạn câu, `qeditor.js` thanh công cụ Word/LaTeX, `i18n.js`…) |
 | `ingest/ingest.py` | Kiểm tra gói, ghi DB, soạn trạng thái gửi Remote, tự đóng câu hết giờ |
-| `bridge/ble_scan.py`, `bridge/blecodec.py` | Bluetooth laptop ⇄ MQTT; định dạng byte trên sóng |
-| `bridge/bridge.py` | (Tuỳ chọn) gateway nRF52840 qua USB serial |
+| `bridge/bridge.py` | Gateway nRF52840 qua USB serial ⇄ MQTT |
+| `bridge/blecodec.py` | Định dạng byte trên sóng (tham chiếu cho firmware gateway) |
+| `bridge/ble_scan.py` | (Tuỳ chọn, khi chưa có gateway) Bluetooth laptop ⇄ MQTT |
 | `common/arscfg.py` | Đọc `config.ini`, kết nối DB, mã hoá bitmap, tạo client MQTT |
 | `db/schema.sql`, `db/migrate_0XX_*.sql` | Cấu trúc CSDL và các bước nâng cấp |
 | `deploy/` | Script cài Ubuntu, dịch vụ systemd, cấu hình Apache/Mosquitto, lệnh `ars` |
@@ -73,11 +74,11 @@ Ba nguyên tắc thiết kế (đừng phá):
 ## 4. Luồng dữ liệu Remote → web
 
 1. Remote phát gói quảng bá (Manufacturer Data, mã công ty `0xFFFF`, byte đầu `0xA5`).
-2. `ble_scan.py` giải mã bằng `blecodec.decode_uplink()` thành JSON `{mac, room, type, id, q, seq, ans, batt, rssi}`, thêm `via: "ble"` và `ts`, rồi publish `ars/<room>/resp`.
+2. Gateway giải mã (như `blecodec.decode_uplink()`) thành 1 dòng JSON `{mac, room, type, id, q, seq, ans, batt, rssi}` qua USB; `bridge.py` thêm `via: "ble"` và `ts`, rồi publish `ars/<room>/resp`.
 3. `ingest.py` → `Ingest.process()` kiểm tra lần lượt: định dạng → ghi `devices` → có buổi đang chạy với room này không → `via` phải là `ble` → LOGIN/ANSWER (ghế có trong lớp, ghép MAC, câu đang mở, hạn giờ, trùng seq…). Gói bị loại ghi vào `rejected` với lý do.
 4. Gói hợp lệ ghi `session_logins` / `responses`. VIEW `final_answers` lấy đáp án cuối của mỗi ghế.
 5. Phát trạng thái: `Ingest.build_state()` → `state_cmds()` tạo 4 lệnh `STATE / ATTEND / OPENMASK / ACKS` → `ars/<room>/cmd/gw` và bản giữ lại `ars/<room>/state`.
-6. `ble_scan.py` đổi mỗi lệnh thành 1 gói beacon (`blecodec.encode_cmd()`) và phát qua BlueZ; ACKS được ưu tiên (gộp thay đổi trong 30 ms, dừng quét ngắn có giới hạn tần suất). Remote bật đèn khi thấy bản ghi khớp đúng giao dịch vừa gửi.
+6. `bridge.py` ghi nguyên từng lệnh xuống gateway; gateway đổi mỗi lệnh thành 1 gói beacon (như `blecodec.encode_cmd()`) và phát, ưu tiên ACKS. (Chế độ Bluetooth laptop: `ble_scan.py` làm việc này qua BlueZ.) Remote bật đèn khi thấy bản ghi khớp đúng giao dịch vừa gửi.
 7. Web: `session.php` + `assets/control.js` gọi `api/state.php` mỗi giây để vẽ lại bảng điều khiển. Giáo viên bấm nút → `api/action.php` ghi DB và tăng `state_rev`.
 
 Thứ tự kiểm tra và mã lý do loại: README mục 3.3. Định dạng byte: README mục 4.1 và docstring đầu `bridge/blecodec.py`.
@@ -163,11 +164,11 @@ Các bảng chính của phần Remote: README mục 3.4. Xem nhanh dữ liệu 
 
 ## 9. Bluetooth và firmware Remote
 
-- Phần cứng: Remote nRF52840 SuperMini (thiết kế mạch KiCad Rev J để riêng ngoài repo). Firmware: `firmware/ARS_remote_v3_10/` (Arduino, core Adafruit nRF52). Laptop là bộ thu, không cần gateway.
+- Phần cứng: Remote nRF52840 SuperMini (thiết kế mạch KiCad Rev J để riêng ngoài repo). Firmware Remote: `firmware/ARS_remote_v3_10/` (Arduino, core Adafruit nRF52). Bộ thu là một nRF52840 thứ hai làm gateway cắm USB; firmware `firmware/ARS_gateway_v3_10/` (SuperMini; `gw_codec.cpp` là bản C++ của `blecodec.py`, `gw_radio.cpp` quét + phát xoay vòng beacon), giao tiếp serial ở README mục 4.2b.
 - Hợp đồng giữa firmware và server là định dạng byte trong `bridge/blecodec.py`:
-  - Remote → laptop 9 byte: `A5, type, room, ghế, câu, seq, đáp án, pin(2 byte LE)`.
-  - Laptop → Remote 4 loại beacon `A5 10..13`; ACK/NACK **chính xác** `(ghế, câu, seq, đáp án, status)`. Chi tiết và lịch radio: `firmware/PROTOCOL_V3_10.md`.
-  - **Đổi định dạng thì sửa đồng bộ firmware + `blecodec.py` + `ble_scan.py` + `ingest.py` + tài liệu giao thức**, và test `tests/ingest_integration.py`, `tests/ble_scan_unit.py`.
+  - Remote → gateway 9 byte: `A5, type, room, ghế, câu, seq, đáp án, pin(2 byte LE)`.
+  - Gateway → Remote 4 loại beacon `A5 10..13`; ACK/NACK **chính xác** `(ghế, câu, seq, đáp án, status)`. Chi tiết và lịch radio: `firmware/PROTOCOL_V3_10.md`.
+  - **Đổi định dạng thì sửa đồng bộ firmware Remote + firmware gateway + `blecodec.py` + `ble_scan.py` + `ingest.py` + tài liệu giao thức**, và test `tests/ingest_integration.py`, `tests/ble_scan_unit.py`.
 - Firmware V3.10: một đợt quảng bá non-connectable 150 ms rồi nghe ACK liên tục 1 s; chưa có thì nghỉ ngẫu nhiên tăng dần và gửi lại CÙNG seq (tối đa 4 lần); địa chỉ BLE random static cố định; số ghế/room nhập bằng MODE, lưu flash. Chân P0.09/P0.10 (hàng phím ROW4/ROW3) là chân NFC, dùng như GPIO.
 - Đo độ tin cậy trên máy thật: quy trình và tiêu chí PASS/FAIL ở `firmware/TEST_V3_10.md`; `tools/ble_txn_report.py` phân loại từng giao dịch từ log serial + journalctl.
 - Kiểm tra trên máy thật: `sudo ars ble` in mọi gói quảng bá nghe được; dòng `→ ARS {...}` là gói đúng định dạng.
@@ -188,6 +189,7 @@ Kết quả mong đợi: mỗi bộ in số kiểm tra đạt, dòng cuối **`C
 |---|---|
 | `http_smoke.py` | Mọi trang mở được, đăng nhập, quyền truy cập; tạo dữ liệu mẫu (`smoke.json`) cho các bộ sau |
 | `ingest_integration.py` | Luật nhận gói của ingest, ACK/NACK chính xác, nhiều ghế cùng lúc, hạn ACK từng ghế, giải mã gói BLE |
+| `gateway_codec_test.py` | Biên dịch `gw_codec.cpp` bằng g++, so từng byte với `blecodec.py` (lệnh ingest, biên, ngẫu nhiên), JSON gói Remote, lọc bản lặp |
 | `ble_scan_unit.py` | `ble_scan.Advertiser` với D-Bus giả: gộp ACK, giới hạn dừng quét, ưu tiên ACK |
 | `extended_integration.py`, `v11_integration.py` | Bài tập, phụ huynh, trường, Cloud, thi đua, Zalo/SMS (giả lập) |
 | `oauth_integration.py`, `student_signup_integration.py` | Đăng nhập Google, học sinh tự đăng ký |
@@ -203,15 +205,15 @@ sudo bash deploy/install_ubuntu.sh   # cài mới hoặc cập nhật (giữ con
 ```
 Cập nhật nhanh khi chỉ đổi code:
 ```bash
-sudo rsync -a --delete --exclude config.ini --exclude .gateway-usb --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
-sudo systemctl restart apache2 ars-ingest ars-ble
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo systemctl restart apache2 ars-ingest ars-bridge
 ```
 
 | Dịch vụ | Chạy | Ghi chú |
 |---|---|---|
 | `ars-ingest` | `ingest/ingest.py` | Luôn chạy |
-| `ars-ble` | `bridge/ble_scan.py` | Bluetooth laptop (mặc định) |
-| `ars-bridge` | `bridge/bridge.py` | Gateway USB, tắt sẵn; đổi bằng `sudo ars gateway usb\|ble` |
+| `ars-bridge` | `bridge/bridge.py` | Gateway nRF52840 cắm USB (mặc định) |
+| `ars-ble` | `bridge/ble_scan.py` | Bluetooth laptop, tắt sẵn; đổi bằng `sudo ars gateway ble\|usb` |
 | `ars-mdns` | `deploy/ars-mdns.sh` | Tên `ars.local` trong mạng LAN |
 
 Lệnh hay dùng: `ars status`, `ars logs`, `ars watch`, `ars mqtt`, `ars ble`, `ars db`, `ars backup`, `sudo ars public on` (link Internet qua Tailscale Funnel). Xem đủ: `ars` không tham số.

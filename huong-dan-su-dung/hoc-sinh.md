@@ -151,7 +151,7 @@ Lưu ý:
 **Bấm OK mà đèn không xanh.**
 - Kiểm tra số ghế nhập đúng chưa.
 - Kiểm tra câu đã được mở chưa.
-- Ngồi gần laptop của thầy cô hơn.
+- Ngồi gần gateway (thiết bị cắm vào laptop của thầy cô) hơn.
 - Nếu vẫn không được, báo thầy cô xem lý do trên bảng điều khiển.
 
 **Báo "ghế đã có máy khác".** Có Remote khác đã điểm danh số ghế của bạn. Báo thầy cô giải phóng ghế.

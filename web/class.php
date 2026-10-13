@@ -165,7 +165,7 @@ page_head($c['name'], 'classes.php');
       <select name="kind"><option value="class"><?= te('Buổi học (học sinh xem lại ngay sau buổi)') ?></option><option value="test"><?= te('Bài kiểm tra (xem lại sau khi GV công bố)') ?></option></select>
     </label>
     <label class="check"><input type="checkbox" name="allow_change" checked> <?= te('Cho học sinh đổi đáp án khi câu còn mở') ?></label>
-    <p class="small muted" style="margin:0">🔵 <?= te('Remote nRF52840 phát Bluetooth, laptop chạy máy chủ thu trực tiếp bằng Bluetooth của máy — không cần gateway.') ?></p>
+    <p class="small muted" style="margin:0">🔵 <?= te('Remote nRF52840 gửi qua gateway nRF52840 cắm USB (máy chủ hoặc máy giáo viên).') ?></p>
     <button class="primary"><?= te('Bắt đầu') ?></button>
   </form>
   <?php endif; ?>

@@ -1,6 +1,7 @@
 <?php
 // Phần "Đường dẫn" và "Kết nối clicker" của trang Cài đặt (include từ settings.php; có $admin).
 $bases = access_bases();
+$mp = mqtt_public();
 $lan_host = preg_replace('#^https?://#', '', $bases['lan_name']);
 $ip = lan_ip();
 $srv_room = (int)(cfg()['gateway']['room'] ?? 0);
@@ -35,15 +36,15 @@ $labels = ['public' => ['🌐 Qua Internet (ở đâu cũng vào được, có H
 
 <section class="card" id="conn">
   <h2>🔵 Kết nối clicker (Bluetooth · nRF52840)</h2>
-  <p class="muted small">Mỗi học sinh một Remote nRF52840. Remote phát gói Bluetooth, <b>laptop chạy máy chủ thu trực tiếp bằng Bluetooth của máy</b> và phát lại trạng thái (câu đang mở, điểm danh, đã nhận) cho Remote — không cần gateway. Room trên Remote phải trùng mã lớp (room) đang học.</p>
+  <p class="muted small">Mỗi học sinh một Remote nRF52840; Remote phát Bluetooth, <b>gateway nRF52840</b> cắm USB thu cả lớp rồi chuyển về máy chủ. Room trên Remote phải trùng mã lớp (room) đang học.</p>
   <div class="gw-ways">
-    <div class="mode"><b><span class="ico">💻</span>Bluetooth của laptop (đang dùng)</b>
-      <span class="small">Dịch vụ <code>ars-ble</code> nghe Remote, room <code>[gateway] room</code> = <?= $srv_room ?: '?' ?> trong config.ini —
-      <?= $srv_gw && (int)$srv_gw['online'] && (int)$srv_gw['age'] < 15 ? '<span class="tag live">đang nghe ' . h((string)(float)$srv_gw['pkt_per_s']) . ' gói/s</span>' : '<span class="tag off">chưa bật</span>' ?>.
-      Bật Bluetooth của laptop; kiểm tra Remote phát đúng gói bằng lệnh <code>sudo ars ble</code>.</span></div>
-    <div class="mode"><b><span class="ico">🔌</span>Gateway nRF52840 cắm USB (tuỳ chọn)</b>
-      <span class="small">Khi phòng rộng, Bluetooth laptop không phủ hết: cắm thêm một nRF52840 làm gateway và chạy <code>sudo ars gateway usb</code>
-      (quay lại Bluetooth laptop: <code>sudo ars gateway ble</code>).</span></div>
+    <div class="mode"><b><span class="ico">🖥</span>Gateway cắm vào máy chủ</b>
+      <span class="small">Dịch vụ <code>ars-bridge</code> đọc cổng USB (cấu hình <code>[gateway] room</code> = <?= $srv_room ?: '?' ?> trong config.ini) —
+      <?= $srv_gw && (int)$srv_gw['online'] && (int)$srv_gw['age'] < 15 ? '<span class="tag live">đang nhận ' . h((string)(float)$srv_gw['pkt_per_s']) . ' gói/s</span>' : '<span class="tag off">chưa thấy gateway</span>' ?></span></div>
+    <div class="mode"><b><span class="ico">💻</span>Gateway cắm vào máy giáo viên</b>
+      <span class="small">Mở bảng điều khiển buổi học bằng Chrome/Edge, bấm <b>“Gateway USB máy này”</b> (cần link https hoặc localhost). Trình duyệt nối về máy chủ qua WebSocket
+      <code><?= h(preg_replace('#^http#', 'ws', $bases['lan_name'])) . h($mp['ws_path']) ?></code><?= $mp['password'] === '' ? ' — <span style="color:var(--bad)">chưa có tài khoản MQTT, chạy lại install_ubuntu.sh</span>' : '' ?>.</span></div>
   </div>
-  <p class="muted small" style="margin:10px 0 0">Kiểm tra pin, sóng và số gói của từng Remote ở <a href="devices.php">Thêm → Thiết bị</a>; ghép Remote cố định với học sinh ở <a href="mapping.php">Ghép Remote</a>.</p>
+  <p class="muted small" style="margin:10px 0 0">Chưa có gateway: dùng tạm Bluetooth của laptop bằng lệnh <code>sudo ars gateway ble</code> (quay lại gateway: <code>sudo ars gateway usb</code>).</p>
+  <p class="muted small" style="margin:6px 0 0">Kiểm tra pin, sóng và số gói của từng Remote ở <a href="devices.php">Thêm → Thiết bị</a>; ghép Remote cố định với học sinh ở <a href="mapping.php">Ghép Remote</a>.</p>
 </section>

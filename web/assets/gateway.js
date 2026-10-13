@@ -84,6 +84,8 @@
     try {
       port = await navigator.serial.requestPort();
       await port.open({ baudRate: 115200 });
+      // firmware gateway chỉ gửi gói khi cổng báo có người nghe (DTR), như pyserial của bridge.py
+      try { await port.setSignals({ dataTerminalReady: true }); } catch (e) { /* trình duyệt cũ: bỏ qua */ }
     } catch (e) { log('Không mở được cổng: ' + e.message); port = null; return; }
     stop = false;
     writer = port.writable.getWriter();

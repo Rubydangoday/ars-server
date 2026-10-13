@@ -1,13 +1,15 @@
 # Test V3.10 — quy trình và tiêu chí PASS/FAIL
 
+> Mặc định server thu Remote qua **gateway nRF52840 cắm USB** (`ars-bridge`). Mục 2 (đo card Bluetooth laptop) và các chỉ số `DIAG SCAN DUTY` / `ble-tune` chỉ dùng khi chạy chế độ Bluetooth laptop (`sudo ars gateway ble`). Với gateway: bỏ qua mục 2; ở mục 3–4 thay `-u ars-ble` bằng `-u ars-bridge`.
+
 ## 0. Cài server
 
 ```bash
 cd ~/Downloads/ars-server                       # repo đã có V3.10
 sudo bash deploy/install_ubuntu.sh              # hoặc chỉ chép code:
-sudo rsync -a --delete --exclude config.ini --exclude .gateway-usb --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
-sudo systemctl restart ars-ingest ars-ble
-ars status                                      # ars-ingest, ars-ble: active
+sudo rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .git --exclude '__pycache__' ./ /opt/ars-server/
+sudo systemctl restart ars-ingest ars-bridge     # (chế độ Bluetooth laptop: ars-ble)
+ars status                                      # ars-ingest, ars-bridge: active
 ```
 
 Kiểm tra không cần radio (CSDL tạm, không đụng dữ liệu thật):
@@ -19,6 +21,20 @@ bash tests/run_local.sh       # ingest_integration 23, ble_scan_unit 11, … C�
 ## 1. Nạp firmware, đặt ghế
 
 Nạp `firmware/ARS_remote_v3_10` (xem README cùng thư mục). Mỗi Remote: MODE → gõ ghế → OK (MODE hai lần nếu cần đổi room). Ghế phải có trong lớp, room = `[gateway] room` của laptop = mã lớp.
+
+## 1b. Kiểm tra gateway nRF52840 (mặc định)
+
+Nạp `firmware/ARS_gateway_v3_10` vào một SuperMini (xem README cùng thư mục), cắm USB máy chủ.
+
+1. **Gateway một mình** (~3 phút). `sudo systemctl stop ars-bridge`, mở Serial monitor 115200 cổng gateway (`arduino-cli monitor -p /dev/ttyACM0` hoặc Arduino IDE):
+   - thấy `# ARS-GW 3.10`; gõ `d` rồi bấm OK trên một Remote → nhiều dòng `# RX … seq=…`, bản thứ 2 trở đi có `dup`, và **đúng 1** dòng JSON `{"mac":…}` cho lần bấm đó;
+   - gõ tay `STATE 1 1 1 4 00` (room 1, câu 1 mở, 4 lựa chọn) rồi `ATTEND 80` (bitmap điểm danh có ghế 7: byte 0 bit 7 — đổi theo ghế của Remote) → đèn gateway sáng, Remote ghế 7 báo đã điểm danh; Remote room 1 hiện câu 1, bấm E bị chặn tại chỗ (`LOCAL REJECT` trên Serial Remote);
+   - gõ `ACKS <ghế>:1:<seq vừa gửi>:<đáp án 1–4>:0` trong vòng 1 s sau khi bấm (hoặc để Remote gửi lại) → Remote đèn xanh; status khác 0 → đèn đỏ;
+   - không gõ gì 15 s → `# server OFF`, đèn tắt; `s` → dòng `# STAT … adverr=0`.
+2. **Với server.** Đóng Serial monitor, `sudo systemctl start ars-bridge`. Web → bảng điều khiển buổi học: **Gateway: đang nhận (… gói/s)**; `ars mqtt` thấy `ars/<room>/resp` khi bấm Remote, mỗi lần bấm 1 bản tin.
+3. Làm mục 3–4 bên dưới với `journalctl -u ars-ingest -u ars-bridge`. Bỏ qua mục 2 (chỉ dành cho Bluetooth laptop).
+
+Tiêu chí riêng của gateway: `adverr` = 0, `qdrop` = 0, `usbdrop` = 0 trong suốt bài test; mỗi lần bấm đúng 1 dòng JSON (lần gửi lại cách ≥ 1 s được tính là dòng mới — đúng thiết kế).
 
 ## 2. Đo radio của card Bluetooth laptop (Bước 2)
 

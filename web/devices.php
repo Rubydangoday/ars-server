@@ -1,5 +1,5 @@
 <?php
-// Tình trạng các clicker server đã nghe thấy: pin, RSSI, lần cuối thấy, tỉ lệ gói trùng; trạng thái bộ thu (Bluetooth laptop / gateway USB).
+// Tình trạng các clicker server đã nghe thấy: pin, RSSI, lần cuối thấy, tỉ lệ gói trùng; trạng thái gateway.
 require __DIR__ . '/lib/bootstrap.php';
 $t = require_login();
 if (($_POST['action'] ?? '') === 'label') {
@@ -18,10 +18,10 @@ function ago(?int $s): string {
 }
 page_head('Thiết bị', 'devices.php');
 ?>
-<div class="page-head"><div><h1>📡 Thiết bị</h1><p class="muted">Bộ thu Bluetooth và Remote đang hoạt động: pin, sóng, số gói nhận được. Ghép Remote với học sinh để chống bấm hộ.</p></div><a class="btn primary" href="mapping.php">🔗 Ghép Remote với học sinh</a></div>
+<div class="page-head"><div><h1>📡 Thiết bị</h1><p class="muted">Gateway và Remote đang hoạt động: pin, sóng, số gói nhận được. Ghép Remote với học sinh để chống bấm hộ.</p></div><a class="btn primary" href="mapping.php">🔗 Ghép Remote với học sinh</a></div>
 <section class="card">
-  <h2>Bộ thu Bluetooth</h2>
-  <?php if (!$gws): ?><p class="muted">Chưa nhận được trạng thái bộ thu nào. Kiểm tra dịch vụ ars-ble (Bluetooth của laptop) đang chạy: ars status, ars logs.</p><?php else: ?>
+  <h2>Gateway</h2>
+  <?php if (!$gws): ?><p class="muted">Chưa nhận được trạng thái gateway nào. Kiểm tra bridge.py đang chạy và ingest.py đã kết nối MQTT.</p><?php else: ?>
   <table class="grid compact"><thead><tr><th>Room</th><th>Trạng thái</th><th>Cổng</th><th>Gói/giây</th><th>Cập nhật</th></tr></thead><tbody>
   <?php foreach ($gws as $g): $on = $g['online'] && $g['age'] < 15; ?>
     <tr><td><?= (int)$g['room_id'] ?></td><td><?= $on ? '<span class="tag live">đang nhận</span>' : '<span class="tag off">mất kết nối</span>' ?></td>
