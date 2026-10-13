@@ -10,6 +10,8 @@ Cài đặt, nạp firmware, chạy mỗi buổi và xử lý sự cố hệ th�
 
 Chế độ 1 nRF — Remote kết nối BLE GATT thẳng với Bluetooth laptop, không cần gateway (`sudo ars gateway gatt`): **[HUONG_DAN_1NRF_GATT.md](HUONG_DAN_1NRF_GATT.md)**
 
+Những gì thay đổi ở V3.11 (tốc độ, độ chính xác, 3 chế độ thu sóng, giao diện Remote): **[CHANGES_V3_11.md](CHANGES_V3_11.md)**
+
 Tài liệu khác: [HUONG_DAN_CAI_DAT.md](HUONG_DAN_CAI_DAT.md) (cài đặt chi tiết) · [UPGRADE_V10.md](UPGRADE_V10.md) (LMS, phụ huynh) · [UPGRADE_V11.md](UPGRADE_V11.md) (trường, Cloud, thi đua, Zalo/SMS) · [UPGRADE_V12.md](UPGRADE_V12.md) (đăng nhập Google, học sinh tự đăng ký) · [tests/README.md](tests/README.md)
 
 ---
