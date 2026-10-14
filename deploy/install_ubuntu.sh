@@ -8,6 +8,10 @@
 #     (ars-ble — thu thẳng bằng Bluetooth của laptop, không cần gateway — được cài sẵn nhưng tắt: sudo ars gateway ble)
 #   - MQTT: 1883 trong máy, WebSocket /mqtt qua Apache
 #   - link Internet cố định (tuỳ chọn): sudo ars public on   (Tailscale Funnel)
+#
+# Máy chủ CLOUD 24/24 (học sinh / phụ huynh ở nhà; không có Remote, gateway, Bluetooth):
+#   sudo bash deploy/install_ubuntu.sh --cloud        (ghi nhớ trong /opt/ars-server/.role-cloud — lần sau chạy không cần --cloud)
+#   Bỏ: Bluetooth, gateway USB, mDNS ars.local, mở cổng tường lửa (link HTTPS đi qua Tailscale Funnel). Xem HUONG_DAN_CLOUD.md
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,12 +20,14 @@ SVC_USER=ars
 [ "$(id -u)" -eq 0 ] || { echo "Chạy bằng sudo: sudo bash deploy/install_ubuntu.sh"; exit 1; }
 say() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 HAS_SYSTEMD=0; [ -d /run/systemd/system ] && HAS_SYSTEMD=1
+CLOUD=0; { [ "${1:-}" = "--cloud" ] || [ "${ARS_ROLE:-}" = cloud ] || [ -f "$DST/.role-cloud" ]; } && CLOUD=1
+[ $CLOUD = 1 ] && echo "Chế độ CLOUD: máy chủ 24/24 cho học sinh / phụ huynh (không Bluetooth / gateway)"
 
 say "1/7 Cài gói (Apache + PHP, MariaDB, Mosquitto, Python)"
 export DEBIAN_FRONTEND=noninteractive
 PKGS="apache2 libapache2-mod-php php-cli php-mysql php-zip php-xml php-mbstring php-curl poppler-utils
-      mariadb-server mosquitto mosquitto-clients avahi-daemon avahi-utils
-      python3 python3-paho-mqtt python3-pymysql python3-serial bluez rfkill rsync"
+      mariadb-server mosquitto mosquitto-clients python3 python3-paho-mqtt python3-pymysql python3-serial rsync"
+[ $CLOUD = 1 ] || PKGS="$PKGS avahi-daemon avahi-utils bluez rfkill"   # lớp học: tên ars.local, Bluetooth
 # Chỉ cài gói còn thiếu: cài lại / cập nhật không cần mạng, và một mirror apt trục trặc
 # ("no longer has a Release file") không làm dừng cả bộ cài khi máy đã đủ gói.
 MISSING=$(for p in $PKGS; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "ok installed" || echo "$p"; done)
@@ -33,17 +39,18 @@ else
     echo "   đã đủ gói, bỏ qua apt"
 fi
 # thư viện Bluetooth (bleak) cho chế độ 1 nRF: gói Ubuntu, không có thì cài bằng pip
-python3 -c 'import bleak' 2>/dev/null || apt-get install -y -qq python3-bleak >/dev/null 2>&1 \
+[ $CLOUD = 1 ] || python3 -c 'import bleak' 2>/dev/null || apt-get install -y -qq python3-bleak >/dev/null 2>&1 \
     || pip3 install -q --break-system-packages bleak 2>/dev/null || pip3 install -q bleak \
     || echo "   CẢNH BÁO: chưa cài được bleak — chế độ 1 nRF (ars-ble / ars-gatt) chưa chạy được; 2 nRF không cần"
 
 say "2/7 Chép mã nguồn vào $DST"
 id -u $SVC_USER >/dev/null 2>&1 || useradd --system --home "$DST" --shell /usr/sbin/nologin $SVC_USER
-usermod -aG dialout,bluetooth $SVC_USER       # cổng USB gateway (/dev/ttyACM*) · Bluetooth của máy (ars-ble, tuỳ chọn)
+[ $CLOUD = 1 ] || usermod -aG dialout,bluetooth $SVC_USER   # cổng USB gateway (/dev/ttyACM*) · Bluetooth của máy (ars-ble, tuỳ chọn)
 getent group $SVC_USER >/dev/null && usermod -aG $SVC_USER www-data
 mkdir -p "$DST"
-rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .git --exclude '__pycache__' "$SRC"/ "$DST"/
+rsync -a --delete --exclude config.ini --exclude .gateway-ble --exclude .gateway-gatt --exclude .role-cloud --exclude .git --exclude '__pycache__' "$SRC"/ "$DST"/
 chown -R root:root "$DST"; chmod -R a+rX "$DST"
+[ $CLOUD = 1 ] && touch "$DST/.role-cloud"
 
 say "3/7 Khởi động MariaDB và Mosquitto"
 if [ $HAS_SYSTEMD = 1 ]; then
@@ -126,11 +133,13 @@ say "6/7 Dịch vụ ingest (luôn chạy) và bridge (gateway nRF52840 cắm US
 if [ $HAS_SYSTEMD = 1 ]; then
     cp "$DST"/deploy/ars-ingest.service "$DST"/deploy/ars-ble.service "$DST"/deploy/ars-bridge.service "$DST"/deploy/ars-gatt.service /etc/systemd/system/
     systemctl daemon-reload
-    systemctl enable -q bluetooth 2>/dev/null || true
+    [ $CLOUD = 1 ] || systemctl enable -q bluetooth 2>/dev/null || true
     systemctl enable -q ars-ingest
     systemctl restart ars-ingest
     # chế độ đã chọn bằng "ars gateway …" được giữ qua mỗi lần cài lại; mặc định 2 nRF (gateway USB)
-    if [ -f "$DST/.gateway-gatt" ]; then
+    if [ $CLOUD = 1 ]; then                  # Cloud không có Remote: không chạy bộ thu sóng nào
+        systemctl disable -q --now ars-bridge ars-ble ars-gatt 2>/dev/null || true
+    elif [ -f "$DST/.gateway-gatt" ]; then
         systemctl disable -q --now ars-bridge ars-ble 2>/dev/null || true; systemctl enable -q ars-gatt; systemctl restart ars-gatt
     elif systemctl is-enabled -q ars-ble 2>/dev/null && [ -f "$DST/.gateway-ble" ]; then
         systemctl disable -q --now ars-gatt 2>/dev/null || true; systemctl restart ars-ble
@@ -141,19 +150,21 @@ else
     echo "   (không có systemd) tự chạy: sudo -u $SVC_USER python3 $DST/ingest/ingest.py &"
 fi
 install -m 755 "$DST/deploy/ars" /usr/local/bin/ars
-if [ -d /etc/udev/rules.d ]; then                # ModemManager không chiếm cổng SuperMini (gateway / Remote)
+if [ $CLOUD = 0 ] && [ -d /etc/udev/rules.d ]; then   # ModemManager không chiếm cổng SuperMini (gateway / Remote)
     install -m 644 "$DST/deploy/99-ars-usb.rules" /etc/udev/rules.d/99-ars-usb.rules
     udevadm control --reload-rules 2>/dev/null && udevadm trigger --subsystem-match=tty 2>/dev/null || true
 fi
 chmod 755 "$DST/deploy/ars-mdns.sh"
-if [ $HAS_SYSTEMD = 1 ]; then
+if [ $HAS_SYSTEMD = 1 ] && [ $CLOUD = 0 ]; then
     systemctl enable -q --now avahi-daemon 2>/dev/null || true
     cp "$DST/deploy/ars-mdns.service" /etc/systemd/system/
     systemctl daemon-reload; systemctl enable -q ars-mdns; systemctl restart ars-mdns
 fi
 
 say "7/7 Tường lửa"
-if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+if [ $CLOUD = 1 ]; then
+    echo "   Cloud: không mở cổng — link HTTPS đi qua Tailscale Funnel (sudo ars public on)"
+elif command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
     ufw allow 80/tcp >/dev/null && echo "   đã mở cổng 80 cho điện thoại học sinh trong mạng LAN"
     ufw allow 5353/udp >/dev/null && echo "   đã mở mDNS (tên $LANNAME)"
 else
@@ -170,7 +181,12 @@ echo "   Học sinh  : http://$LANNAME/hs   hoặc  http://${IP:-<IP-máy>}/hs"
 if [ -n "$PUB" ]; then echo "   Internet  : $PUB/gv   ·   $PUB/hs"
 else echo "   Internet  : chưa bật — chạy  sudo ars public on  để có link https cố định dùng ở mọi nơi"; fi
 echo " Lệnh tiện ích: ars links | ars status | ars logs | ars watch | ars db | ars sim 30 | ars public on"
+if [ $CLOUD = 1 ]; then
+echo " CLOUD: 1) sudo tailscale up  2) sudo ars public on  → gửi học sinh link Internet ở trên (…/hs)"
+echo "        3) web Cloud → menu Cloud → tạo mã đồng bộ; dán vào laptop lớp học (Cloud → Sync to Cloud). HUONG_DAN_CLOUD.md"
+else
 echo " Gateway nRF52840: cắm USB vào máy chủ — ars-bridge tự tìm cổng ([gateway] serial = auto). Kiểm tra: ars gw"
 echo "          Hoặc cắm máy GV, bấm \"Gateway USB máy này\" trên bảng điều khiển."
 echo "          Chưa có gateway: dùng tạm Bluetooth của máy chủ: sudo ars gateway ble   (quay lại: sudo ars gateway usb)"
+fi
 echo "────────────────────────────────────────────────────────────"
