@@ -14,7 +14,8 @@ const AI_PROVIDERS = [
 ];
 
 function ai_conf(): array {
-    $p = setting('ai_provider', 'offline');
+    // Giáo viên chưa nhập mã mời (hoặc học sinh chỉ ở lớp của họ): luôn dùng chế độ Cơ bản, không tốn API key của server
+    $p = function_exists('account_limited') && account_limited() ? 'offline' : setting('ai_provider', 'offline');
     if (!isset(AI_PROVIDERS[$p])) $p = 'offline';
     return [
         'provider' => $p,

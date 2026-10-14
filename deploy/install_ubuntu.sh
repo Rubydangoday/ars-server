@@ -90,6 +90,7 @@ mysql ars < "$DST/db/migrate_013_no_facebook.sql"
 mysql ars < "$DST/db/migrate_014_attendance_parent_msgs.sql"
 mysql ars < "$DST/db/migrate_015_cloud_autosync.sql"
 mysql ars < "$DST/db/migrate_016_parent_phone_login.sql"
+mysql ars < "$DST/db/migrate_017_teacher_verified.sql"
 
 # thư mục lưu file bài giảng (ngoài /opt để cập nhật mã không xoá mất)
 UPL=/var/lib/ars/uploads

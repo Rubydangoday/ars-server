@@ -27,7 +27,8 @@ if ($act === 'info') {
 if ($act === 'upload') {
     $f = $_FILES['file'] ?? null;
     $ext = $f ? strtolower(pathinfo($f['name'], PATHINFO_EXTENSION)) : '';
-    if (!$f || $f['error'] === UPLOAD_ERR_NO_FILE) flash('Chọn file bài giảng.', 'err');
+    if (account_limited()) flash('Tài khoản chưa xác nhận: nhập mã mời giáo viên để tải tệp lên.', 'err');
+    elseif (!$f || $f['error'] === UPLOAD_ERR_NO_FILE) flash('Chọn file bài giảng.', 'err');
     elseif (in_array($f['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) || $f['size'] > MAX_LECTURE_MB * 1048576) flash('File lớn hơn ' . MAX_LECTURE_MB . ' MB.', 'err');
     elseif ($f['error'] !== UPLOAD_ERR_OK) flash('Tải file lỗi (mã ' . $f['error'] . ').', 'err');
     elseif (!in_array($ext, LECTURE_EXT, true)) flash('Chỉ nhận PDF, PowerPoint (.pptx), Word (.docx) hoặc văn bản.', 'err');

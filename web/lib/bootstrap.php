@@ -86,6 +86,32 @@ function require_login(): array {
     return me();
 }
 function is_admin(): bool { return !empty(me()['is_admin']); }
+
+/** Giáo viên đã nhập mã mời giáo viên (hoặc được quản trị viên duyệt). Đăng ký ở chế độ "cần mã mời" mà chưa nhập mã:
+ *  vào web ngay nhưng chưa xác nhận — xem account_limited(). */
+function teacher_verified(): bool {
+    static $v = [];
+    $id = (int)(me()['id'] ?? 0);
+    if (!$id) return true;
+    return $v[$id] ??= (int)qv('SELECT verified FROM teachers WHERE id=?', [$id]) === 1;
+}
+/** Tài khoản bị giới hạn tài nguyên server (AI trả phí → chế độ Cơ bản offline, không tải tệp lên): giáo viên chưa xác nhận,
+ *  hoặc học sinh chỉ học các lớp của giáo viên chưa xác nhận (người lạ tự tạo lớp + học sinh qua link Internet). */
+function account_limited(): bool {
+    if (me()) return !teacher_verified();
+    $code = $_SESSION['student']['code'] ?? null;
+    if ($code === null) return false;
+    static $st = [];
+    return $st[$code] ??= !qv('SELECT 1 FROM students s JOIN classes c ON c.id=s.class_id JOIN teachers t ON t.id=c.teacher_id '
+                            . 'WHERE s.student_code=? AND t.verified=1 LIMIT 1', [$code])
+                        && (bool)qv('SELECT 1 FROM students WHERE student_code=? LIMIT 1', [$code]);
+}
+/** So mã mời giáo viên (không phân biệt hoa thường, bỏ dấu gạch / khoảng trắng). */
+function teacher_invite_ok(string $code): bool {
+    $norm = fn(string $c) => strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $c));
+    $inv = $norm((string)setting('teacher_invite_code', ''));
+    return $inv !== '' && hash_equals($inv, $norm($code));
+}
 /** Admin trường (Ban giám hiệu / chủ trung tâm): quản lý giáo viên và xem báo cáo các lớp trong trường mình. */
 function is_school_admin(): bool { return !empty(me()['school_admin']); }
 function require_admin(): array {
@@ -405,6 +431,17 @@ function page_head(string $title, string $active = '', bool $bare = false): void
     unset($_SESSION['flash']);
     if ($parent) { if (!empty($_SESSION['parent'])) echo oauth_pending_prompt('parent', '../'); }
     elseif ($t) echo oauth_pending_prompt('teacher', '');
+    if (!$bare && !$parent && $t && !empty($_SESSION['show_recovery'])) {   // vừa đăng ký xong vào thẳng: mã khôi phục hiện một lần
+        $rc = $_SESSION['show_recovery']; unset($_SESSION['show_recovery']);
+        echo '<div class="recovery"><b>' . te('Mã khôi phục mật khẩu của “') . h($rc['user']) . '”</b><code>' . h($rc['code']) . '</code>'
+           . '<span class="small">' . te('Chép hoặc chụp lại mã này. Khi quên mật khẩu, dùng mã ở trang “Quên mật khẩu”. Mã chỉ hiện một lần.') . '</span></div>';
+    }
+    if (!$bare && !$parent && $t && !teacher_verified())        // đăng ký chưa có mã mời: nhắc nhập mã ở mọi trang
+        echo '<form method="post" action="verify.php" class="flash warn verify-bar">' . csrf_field()
+           . '<span>🔑 ' . te('Tài khoản chưa xác nhận: trợ lý AI chạy chế độ Cơ bản và chưa tải tệp lên được. Nhập mã mời giáo viên (xin ở quản trị viên server) để dùng đầy đủ.') . '</span>'
+           . '<input name="invite" required autocomplete="off" placeholder="GV-XXXX-XXXX" style="text-transform:uppercase;width:11em">'
+           . '<input type="hidden" name="back" value="' . h(basename((string)($_SERVER['SCRIPT_NAME'] ?? 'dashboard.php')) . (($_SERVER['QUERY_STRING'] ?? '') !== '' ? '?' . $_SERVER['QUERY_STRING'] : '')) . '">'
+           . '<button class="primary small">' . te('Xác nhận') . '</button></form>';
 }
 
 function page_foot(string $script = ''): void {

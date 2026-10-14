@@ -23,6 +23,7 @@ function score_value($v,float $max): float {
 }
 /** Server MIME allowlist, random name, storage outside document root. No SVG/HTML. */
 function lms_upload(array $f,array $allow,int $limit=20971520): array {
+    if(account_limited())throw new RuntimeException(t('Tài khoản chưa xác nhận: nhập mã mời giáo viên để tải tệp lên.'));
     if(($f['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new RuntimeException('Tải tệp thất bại (kiểm tra dung lượng/php.ini).');
     if(!is_uploaded_file($f['tmp_name'])||filesize($f['tmp_name'])>$limit)throw new RuntimeException('Tệp không hợp lệ hoặc quá lớn.');
     $mime=(new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);

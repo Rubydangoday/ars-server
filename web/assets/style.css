@@ -1240,3 +1240,7 @@ body.app .ai-addall.primary b { background: rgba(255,255,255,.25); color: #fff; 
 .p-inbox .p-msg.unread { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 7%, transparent); }
 /* Bảng điểm danh cả lớp — attendance.php */
 td.att-ok { color: var(--ok); font-weight: 600; } td.att-bad { color: var(--bad); background: var(--bad-bg); }
+/* thanh nhắc giáo viên chưa nhập mã mời (lib/bootstrap.php page_head) */
+.verify-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.verify-bar span { flex: 1 1 260px; }
+.verify-bar input { margin: 0; }

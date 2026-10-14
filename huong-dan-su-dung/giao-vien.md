@@ -26,7 +26,10 @@
 **Đăng nhập:** ở bất cứ đâu mở **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/gv**; trong lớp cùng Wi-Fi với máy chủ có thể dùng `http://ars.local/gv`.
 Gửi học sinh link **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/hs** để làm bài ở nhà (laptop máy chủ phải đang bật và có mạng).
 - Lần đầu cài máy chủ: trang đăng nhập cho tạo **tài khoản quản trị**.
-- Giáo viên khác: bấm **Đăng ký**, nhập **mã mời giáo viên** do quản trị viên cấp.
+- Giáo viên khác: bấm **Đăng ký**. **Mã mời giáo viên** (do quản trị viên cấp) có thể nhập ngay hoặc để trống và nhập sau.
+  - Có mã đúng: tài khoản dùng đầy đủ ngay.
+  - Để trống: tài khoản vẫn được tạo và vào thẳng trang Tổng quan (lần đầu trang này hiện **mã khôi phục mật khẩu**, hãy chép lại). Tài khoản ở trạng thái **chưa xác nhận**: dạy, soạn câu hỏi, quản lý lớp bình thường, nhưng **trợ lý AI chạy chế độ Cơ bản** và **chưa tải tệp lên được** (bài giảng, ảnh, âm thanh). Khi có mã, nhập vào **thanh nhắc màu vàng** ở đầu trang rồi bấm **Xác nhận**.
+  - Nhập sai mã lúc đăng ký thì báo lỗi, không tạo tài khoản.
 - Có thể đăng nhập bằng Google nếu quản trị viên đã bật.
 - Quên mật khẩu: bấm **Quên mật khẩu**.
   - Nếu mở ngay trên laptop máy chủ, đặt lại được luôn.
@@ -248,7 +251,7 @@ Phụ huynh tự đăng ký bằng mã mời mà quên mật khẩu: cấp **mã
 ## 12. Chức năng quản trị
 
 Chỉ tài khoản **quản trị** thấy:
-- **Giáo viên**: tạo mã mời giáo viên, chế độ đăng ký, khoá/mở tài khoản, cấp quyền, đặt lại mật khẩu.
+- **Giáo viên**: tạo mã mời giáo viên, chế độ đăng ký, khoá/mở tài khoản, cấp quyền, đặt lại mật khẩu. Giáo viên đăng ký chưa có mã hiện nhãn *chưa xác nhận*; bấm **Duyệt** để xác nhận mà không cần mã.
 - **Trường**: tạo trường/trung tâm, gán giáo viên, cấp quyền **Admin trường** (ban giám hiệu xem báo cáo các lớp).
 - **Cloud**: đồng bộ "Hybrid". Máy chủ ở lớp chạy offline; khi có mạng, nhập địa chỉ Cloud + mã đồng bộ rồi bấm **Lưu & kiểm tra kết nối**. Chỉ cần làm một lần. Từ đó, máy chủ ở lớp **tự đồng bộ**: cứ mỗi 3 phút khi máy bật và có mạng, nó tự đẩy buổi mới, điểm và điểm danh lên Cloud. Muốn gửi ngay thì bấm **Sync to Cloud**. Trang Cloud có nút tắt chế độ tự động nếu không muốn dùng.
 - **Đăng nhập Google** và **Zalo/SMS** cấu hình trong Cài đặt.
