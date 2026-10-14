@@ -19,12 +19,15 @@ Tài liệu kỹ thuật khác trong repo:
 
 ## Ba đường dẫn cần nhớ
 
-| Ai | Địa chỉ trong mạng trường | Ghi chú |
+| Ai | **Ở nhà / mọi mạng (Internet)** | Trong lớp, cùng Wi-Fi với máy chủ |
 |---|---|---|
-| Giáo viên | `http://ars.local/gv` | Hoặc `http://<IP máy chủ>/gv` |
-| Học sinh | `http://ars.local/hs` | Giáo viên chiếu mã QR trong trang lớp để học sinh quét |
-| Phụ huynh | `http://ars.local/ars/parent/` | Hoặc bấm "Phụ huynh" ở trang đăng nhập học sinh |
+| Giáo viên | **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/gv** | `http://ars.local/gv` hoặc `http://<IP máy chủ>/gv` |
+| Học sinh | **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/hs** | `http://ars.local/hs` — giáo viên chiếu mã QR trong trang lớp để quét |
+| Phụ huynh | **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/ars/parent/** | `http://ars.local/ars/parent/` — hoặc bấm "Phụ huynh" ở trang đăng nhập học sinh |
 
-Nếu nhà trường đã bật link Internet (`sudo ars public on`), thay `http://ars.local` bằng link `https://…ts.net` mà giáo viên được cung cấp. Link này dùng được ở nhà.
+Link Internet là của **máy chủ hiện tại (laptop giáo viên)**, bật bằng Tailscale Funnel (`sudo ars public on`): dùng được bằng
+Wi-Fi hay 4G bất kỳ, **khi laptop đang bật và có mạng**. Khi chuyển sang máy chủ Cloud 24/24
+([HUONG_DAN_CLOUD.md](../HUONG_DAN_CLOUD.md)), giáo viên sẽ gửi link mới dạng `https://ars-cloud.….ts.net/hs`.
+Lệnh `ars links` trên máy chủ luôn in đúng các link đang dùng.
 
 Mọi trang có nút **VI / EN** để đổi tiếng Việt / tiếng Anh.

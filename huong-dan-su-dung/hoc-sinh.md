@@ -58,7 +58,7 @@ Remote có màn hình 2 số, đèn đỏ/xanh và 14 phím:
 
 ## 2. Đăng nhập trang học sinh
 
-Mở `http://ars.local/hs` (hoặc quét mã QR thầy cô chiếu, hoặc link Internet thầy cô gửi).
+Ở nhà hoặc dùng 4G: mở **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/hs**. Trong lớp (cùng Wi-Fi với máy chủ): `http://ars.local/hs` hoặc quét mã QR thầy cô chiếu.
 
 **Đã có tên trong danh sách lớp:**
 - Đăng nhập bằng **MSSV**. **Lần đầu, mật khẩu chính là MSSV**; hệ thống sẽ bắt đổi mật khẩu mới ngay.

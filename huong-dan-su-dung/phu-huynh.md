@@ -12,7 +12,7 @@ Thầy cô gửi riêng cho bạn một **mã mời** cho từng con:
 
 ## 2. Tạo tài khoản
 
-1. Mở trang phụ huynh: `http://ars.local/ars/parent/` hoặc link thầy cô gửi. Quét mã QR trên phiếu mời thì mã được điền sẵn.
+1. Mở trang phụ huynh: **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/ars/parent/** (dùng ở nhà, Wi-Fi hay 4G đều được) hoặc link thầy cô gửi. Quét mã QR trên phiếu mời thì mã được điền sẵn.
 2. Chọn **Đăng ký bằng mã mời**, nhập:
    - **Mã mời**.
    - **Họ tên**.

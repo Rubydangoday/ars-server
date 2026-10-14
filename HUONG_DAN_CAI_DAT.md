@@ -37,6 +37,7 @@ Chỉ cần nhớ **/gv** (giáo viên) và **/hs** (học sinh). Nhiều giáo 
 | Cùng mạng Wi-Fi/LAN — tên cố định | `http://ars.local/gv` | `http://ars.local/hs` | Máy tính, iPhone, Android 12+. Đổi tên: `sudo ars lan-name lop-iot.local` |
 | Cùng mạng — theo IP | `http://<IP>/gv` | `http://<IP>/hs` | Nên đặt *DHCP reservation* cho máy chủ trong router để IP không đổi |
 | **Mọi nơi, qua Internet (https)** | `https://<tên-máy>.<tailnet>.ts.net/gv` | `…/hs` | Bật một lần bằng Tailscale Funnel (bên dưới) |
+| ↳ máy chủ hiện tại (laptop) | `https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/gv` | `https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/hs` | Đang bật; kiểm tra qua Internet ngày 14/10/2026: trang học sinh / giáo viên trả 200 |
 
 - `ars links` in toàn bộ link. Trên web: **Tổng quan** có ô link + mã QR; **Cài đặt → Đường dẫn** có đủ các link.
 - Link vào thẳng một lớp: `…/hs/<MÃ-THAM-GIA>` (ở trang lớp, bấm **QR** để chiếu cho cả lớp quét).

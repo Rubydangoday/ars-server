@@ -23,7 +23,8 @@
 
 **Máy chủ:** laptop cài ARS (xem [HUONG_DAN_CAI_DAT.md](../HUONG_DAN_CAI_DAT.md)). Cắm **gateway nRF52840** vào cổng USB của laptop trong giờ học, vì nó thu đáp án từ Remote.
 
-**Đăng nhập:** mở `http://ars.local/gv` (hoặc link quản trị viên gửi).
+**Đăng nhập:** ở bất cứ đâu mở **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/gv**; trong lớp cùng Wi-Fi với máy chủ có thể dùng `http://ars.local/gv`.
+Gửi học sinh link **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/hs** để làm bài ở nhà (laptop máy chủ phải đang bật và có mạng).
 - Lần đầu cài máy chủ: trang đăng nhập cho tạo **tài khoản quản trị**.
 - Giáo viên khác: bấm **Đăng ký**, nhập **mã mời giáo viên** do quản trị viên cấp.
 - Có thể đăng nhập bằng Google nếu quản trị viên đã bật.

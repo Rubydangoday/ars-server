@@ -6,6 +6,8 @@ Phần mềm chạy trên **laptop giáo viên** (server). Học sinh bấm **Re
 
 Hướng dẫn sử dụng cho giáo viên, học sinh, phụ huynh và lập trình viên: **[huong-dan-su-dung/](huong-dan-su-dung/README.md)**
 
+**Link Internet của máy chủ hiện tại (laptop giáo viên, dùng được ở nhà khi laptop bật):** giáo viên **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/gv** · học sinh **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/hs** · phụ huynh **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/ars/parent/**
+
 Cài đặt, nạp firmware, chạy mỗi buổi và xử lý sự cố hệ thống 2 nRF (Remote + gateway USB): **[HUONG_DAN_2NRF.md](HUONG_DAN_2NRF.md)**
 
 Chế độ 1 nRF — Remote kết nối BLE GATT thẳng với Bluetooth laptop, không cần gateway (`sudo ars gateway gatt`): **[HUONG_DAN_1NRF_GATT.md](HUONG_DAN_1NRF_GATT.md)**
