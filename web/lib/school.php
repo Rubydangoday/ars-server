@@ -61,7 +61,7 @@ function my_homerooms(): array {
 function class_remote_summary(int $class_id): array {
     $out = [];
     foreach (qall('SELECT st.seat_no, st.student_code, st.full_name, s.id AS sid, '
-        . '(SELECT COUNT(*) FROM session_logins l WHERE l.session_id=s.id AND l.seat_no=st.seat_no) AS present, '
+        . '(SELECT COUNT(*) FROM attendance_final af WHERE af.session_id=s.id AND af.seat_no=st.seat_no AND af.status="present") AS present, '
         . '(SELECT COUNT(*) FROM session_questions sq JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND q.correct IS NOT NULL) AS n, '
         . '(SELECT COUNT(*) FROM final_answers f JOIN session_questions sq ON sq.id=f.session_q_id JOIN questions q ON q.id=sq.question_id '
         . '  WHERE sq.session_id=s.id AND f.seat_no=st.seat_no AND f.answer=q.correct) AS ok '

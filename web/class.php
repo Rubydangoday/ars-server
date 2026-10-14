@@ -2,6 +2,9 @@
 // Một lớp: sửa thông tin, danh sách học sinh (thêm/sửa/xoá/nhập file), bắt đầu buổi học.
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/sheet.php';
+require __DIR__ . '/lib/attendance.php';
+require __DIR__ . '/lib/roster.php';
+require_once __DIR__ . '/lib/notify.php';
 $t = require_login();
 $c = own_class((int)($_GET['id'] ?? 0));
 $cid = (int)$c['id'];
@@ -20,10 +23,12 @@ if ($act === 'update') {
 }
 if ($act === 'add_student' || $act === 'edit_student') {
     $seat = (int)($_POST['seat_no'] ?? 0); $name = trim($_POST['full_name'] ?? ''); $code = trim($_POST['student_code'] ?? '');
+    $ph_in = trim($_POST['parent_phone'] ?? ''); $phone = normalize_phone($ph_in);
     if ($seat < 1 || $seat > 99 || $name === '') flash(t('Số thứ tự 1–99 và họ tên là bắt buộc.'), 'err');
+    elseif ($ph_in !== '' && !$phone) flash(t('SĐT phụ huynh không hợp lệ (10 số, VD 0912345678).'), 'err');
     else {
-        q('INSERT INTO students (class_id, seat_no, student_code, full_name) VALUES (?,?,?,?) '
-        . 'ON DUPLICATE KEY UPDATE student_code=VALUES(student_code), full_name=VALUES(full_name)', [$cid, $seat, $code ?: null, $name]);
+        q('INSERT INTO students (class_id, seat_no, student_code, full_name, parent_phone) VALUES (?,?,?,?,?) '
+        . 'ON DUPLICATE KEY UPDATE student_code=VALUES(student_code), full_name=VALUES(full_name), parent_phone=VALUES(parent_phone)', [$cid, $seat, $code ?: null, $name, $phone]);
         flash(t('Đã lưu học sinh số {n}.', ['n' => $seat]));
     }
     redirect("class.php?id=$cid");
@@ -48,7 +53,9 @@ if ($act === 'start_session') {
     }
     q('UPDATE classes SET conn_mode="ble" WHERE id=? AND conn_mode<>"ble"', [$cid]);   // chỉ dùng Remote nRF52840 (Bluetooth)
     if (!q1('SELECT 1 FROM questions WHERE set_id=?', [$set['id']])) { flash(t('Bộ câu hỏi chưa có câu nào.'), 'err'); redirect("class.php?id=$cid"); }
+    $was_running = array_column(qall('SELECT id FROM sessions WHERE class_id=? AND status="running"', [$cid]), 'id');
     q('UPDATE sessions SET status="ended", ended_at=NOW() WHERE class_id=? AND status="running"', [$cid]);
+    foreach ($was_running as $old) parent_notify_session((int)$old);     // buổi cũ tự kết thúc: vẫn báo phụ huynh
     $kind = ($_POST['kind'] ?? 'class') === 'test' ? 'test' : 'class';
     // bài kiểm tra: học sinh chỉ xem lại được khi GV bấm "Công bố" ở trang kết quả
     $lid = (int)($_POST['lesson_id'] ?? 0);
@@ -85,23 +92,24 @@ if ($act === 'reset_pw') {
     redirect("class.php?id=$cid");
 }
 
-// ---- nhập danh sách từ Excel/CSV: bước 1 xem trước, bước 2 xác nhận
+// ---- nhập danh sách từ Excel / CSV / Word / TXT (lib/roster.php): bước 1 xem trước, bước 2 xác nhận
 $preview = null;
 if ($act === 'import_upload' && !empty($_FILES['file']['tmp_name'])) {
     try {
-        $sheets = sheet_read($_FILES['file']['tmp_name'], $_FILES['file']['name']);
-        $rows = $sheets['Danh sach lop'] ?? $sheets[t('Danh sách lớp')] ?? reset($sheets);
         $preview = [];
         $seen = [];
-        foreach (data_rows($rows) as $line => $r) {
-            $seat = trim($r[0] ?? ''); $code = trim($r[1] ?? ''); $name = trim($r[2] ?? '');
+        foreach (roster_rows(roster_table($_FILES['file']['tmp_name'], $_FILES['file']['name'])) as $x) {
+            ['line' => $line, 'seat' => $seat, 'code' => $code, 'name' => $name] = $x;
             $errs = [];
+            $phone = $x['phone'] !== '' ? normalize_phone($x['phone']) : null;
+            $warn = $x['phone'] !== '' && !$phone ? t('SĐT phụ huynh không hợp lệ, bỏ qua:') . ' ' . $x['phone'] : '';
             if (!ctype_digit($seat) || (int)$seat < 1 || (int)$seat > 99) $errs[] = t('số thứ tự phải 1–99');
             elseif (isset($seen[(int)$seat])) $errs[] = t('trùng số thứ tự với dòng') . ' ' . $seen[(int)$seat];
             if ($name === '') $errs[] = t('thiếu họ tên');
             if (ctype_digit($seat)) $seen[(int)$seat] = $line;
-            $preview[] = ['line' => $line, 'seat' => $seat, 'code' => $code, 'name' => $name, 'errs' => $errs];
+            $preview[] = ['line' => $line, 'seat' => $seat, 'code' => $code, 'name' => $name, 'phone' => $phone, 'warn' => $warn, 'errs' => $errs, 'auto' => $x['auto']];
         }
+        if (!$preview) throw new RuntimeException(t('không tìm thấy học sinh nào (cần cột Họ tên, hoặc mỗi dòng một học sinh).'));
         $_SESSION['import_students'][$cid] = $preview;
     } catch (Throwable $e) { $preview = null; flash(t('Không đọc được file:') . ' ' . $e->getMessage(), 'err'); }
 }
@@ -110,8 +118,10 @@ if ($act === 'import_confirm') {
     $ok = array_filter($rows, fn($r) => !$r['errs']);
     db()->beginTransaction();
     if (isset($_POST['replace'])) q('DELETE FROM students WHERE class_id=?', [$cid]);
-    foreach ($ok as $r) q('INSERT INTO students (class_id, seat_no, student_code, full_name) VALUES (?,?,?,?) '
-        . 'ON DUPLICATE KEY UPDATE student_code=VALUES(student_code), full_name=VALUES(full_name)', [$cid, (int)$r['seat'], $r['code'] ?: null, $r['name']]);
+    // file không có SĐT phụ huynh: giữ SĐT đã nhập trước đó
+    foreach ($ok as $r) q('INSERT INTO students (class_id, seat_no, student_code, full_name, parent_phone) VALUES (?,?,?,?,?) '
+        . 'ON DUPLICATE KEY UPDATE student_code=VALUES(student_code), full_name=VALUES(full_name), parent_phone=COALESCE(VALUES(parent_phone), parent_phone)',
+        [$cid, (int)$r['seat'], $r['code'] ?: null, $r['name'], $r['phone'] ?? null]);
     db()->commit();
     unset($_SESSION['import_students'][$cid]);
     flash(t('Đã nhập') . ' ' . count($ok) . ' ' . t('học sinh') . (count($ok) < count($rows) ? ' ' . t('(bỏ') . ' ' . (count($rows) - count($ok)) . ' ' . t('dòng lỗi)') : '') . '.');
@@ -140,6 +150,7 @@ page_head($c['name'], 'classes.php');
   <h1><?= h($c['name']) ?> <span class="tag">room <?= (int)$c['room_id'] ?></span> <span class="tag topic">🔵 Bluetooth · nRF52840</span></h1>
   <div class="quick" style="margin:0">
     <a class="btn" href="lessons.php?class=<?= $cid ?>">📚 <?= te('10 buổi học & bài giảng') ?></a>
+    <a class="btn" href="attendance.php?class=<?= $cid ?>">🗓 <?= te('Điểm danh') ?></a>
     <a class="btn" href="compose.php"><?= te('✍ Soạn câu hỏi') ?></a>
     <a class="btn" href="#on-tap"><?= te('📝 Giao bài ôn tập') ?></a>
   </div>
@@ -188,9 +199,9 @@ page_head($c['name'], 'classes.php');
 <section class="card">
   <h2><?= te('Xem trước danh sách nhập') ?></h2>
   <table class="grid">
-    <thead><tr><th><?= te('Dòng') ?></th><th><?= te('Số thứ tự') ?></th><th>MSSV</th><th><?= te('Họ tên') ?></th><th><?= te('Lỗi') ?></th></tr></thead>
+    <thead><tr><th><?= te('Dòng') ?></th><th><?= te('Số thứ tự') ?></th><th>MSSV</th><th><?= te('Họ tên') ?></th><th><?= te('SĐT phụ huynh') ?></th><th><?= te('Lỗi') ?></th></tr></thead>
     <tbody><?php foreach ($preview as $r): ?>
-      <tr class="<?= $r['errs'] ? 'bad' : '' ?>"><td><?= $r['line'] ?></td><td><?= h($r['seat']) ?></td><td><?= h($r['code']) ?></td><td><?= h($r['name']) ?></td><td><?= h(implode('; ', $r['errs'])) ?></td></tr>
+      <tr class="<?= $r['errs'] ? 'bad' : '' ?>"><td><?= $r['line'] ?></td><td><?= h($r['seat']) ?><?= !empty($r['auto']) ? ' <span class="muted small">(' . te('tự đánh số') . ')</span>' : '' ?></td><td><?= h($r['code']) ?></td><td><?= h($r['name']) ?></td><td><?= h($r['phone'] ?? '') ?></td><td><?= h(implode('; ', array_filter([...$r['errs'], $r['warn'] ?? '']))) ?></td></tr>
     <?php endforeach; ?></tbody>
   </table>
   <form method="post" class="row">
@@ -218,21 +229,21 @@ page_head($c['name'], 'classes.php');
 </section>
 
 <section class="card">
-  <h2><?= te('Học sinh (') ?><?= count($students) ?>)</h2>
+  <div class="card-head"><h2><?= te('Học sinh (') ?><?= count($students) ?>)</h2><a class="btn small" href="family.php?class=<?= $cid ?>#pacc">📱 <?= te('Tài khoản phụ huynh') ?></a></div>
   <div class="row">
     <form method="post" enctype="multipart/form-data" class="row">
       <?= csrf_field() ?><input type="hidden" name="action" value="import_upload">
-      <input type="file" name="file" accept=".xlsx,.csv" required>
-      <button><?= te('Nhập từ Excel/CSV') ?></button>
+      <input type="file" name="file" accept=".xlsx,.csv,.docx,.txt" required>
+      <button><?= te('Nhập danh sách (Excel, CSV, Word, TXT)') ?></button>
     </form>
     <a class="btn" href="template.php"><?= te('Tải file mẫu') ?></a>
   </div>
-  <p class="muted small">Sheet "Danh sach lop": cột A số thứ tự (1–99, là ID học sinh gõ trên clicker), cột B MSSV, cột C họ tên. Dòng đầu là tiêu đề.</p>
+  <p class="muted small"><?= te('Nhận Excel (.xlsx), CSV, Word (.docx — bảng hoặc mỗi dòng một học sinh) và .txt. Tự nhận cột theo tiêu đề: STT (số ghế 1–99, là ID học sinh gõ trên Remote), MSSV, Họ tên (hoặc Họ đệm + Tên), SĐT phụ huynh (dùng để cấp tài khoản phụ huynh). Không có cột STT thì tự đánh số 1, 2, 3… Luôn xem trước rồi mới xác nhận.') ?></p>
   <?php if ($students): ?>
   <table class="grid compact">
-    <thead><tr><th><?= te('Số') ?></th><th>MSSV</th><th><?= te('Họ tên') ?></th><th><?= te('Tài khoản học sinh') ?></th><th></th></tr></thead>
+    <thead><tr><th><?= te('Số') ?></th><th>MSSV</th><th><?= te('Họ tên') ?></th><th><?= te('SĐT phụ huynh') ?></th><th><?= te('Tài khoản học sinh') ?></th><th></th></tr></thead>
     <tbody><?php foreach ($students as $s): $acc = $s['student_code'] !== null && array_key_exists($s['student_code'], $accounts); ?>
-      <tr><td><?= (int)$s['seat_no'] ?></td><td><?= h($s['student_code']) ?></td><td><?= h($s['full_name']) ?></td>
+      <tr><td><?= (int)$s['seat_no'] ?></td><td><?= h($s['student_code']) ?></td><td><?= h($s['full_name']) ?></td><td class="small"><?= h($s['parent_phone'] ?? '') ?></td>
         <td><?php if (!$s['student_code']): ?><span class="muted small"><?= te('cần MSSV để đăng nhập') ?></span>
             <?php elseif ($acc): ?><span class="small"><?= te('đã vào') ?> <?= h(substr((string)$accounts[$s['student_code']], 0, 16)) ?></span>
               <?php if (isset($unverified[$s['student_code']])): ?><span class="tag off" title="<?= te('Tài khoản này được tự tạo trước khi MSSV có trong danh sách lớp, chưa vào lớp bằng mã tham gia. Hỏi học sinh có tự tạo không; nếu không, bấm “đặt lại MK” để thu hồi.') ?>"><?= te('⚠ tự tạo, cần kiểm tra') ?></span><?php endif; ?>
@@ -253,6 +264,7 @@ page_head($c['name'], 'classes.php');
     <label><?= te('Số') ?> <input name="seat_no" type="number" min="1" max="99" value="<?= $edit ? (int)$edit['seat_no'] : $next_seat ?>" <?= $edit ? 'readonly' : '' ?> required class="w5"></label>
     <label>MSSV <input name="student_code" value="<?= h($edit['student_code'] ?? '') ?>"></label>
     <label><?= te('Họ tên') ?> <input name="full_name" value="<?= h($edit['full_name'] ?? '') ?>" required></label>
+    <label><?= te('SĐT phụ huynh') ?> <input name="parent_phone" type="tel" inputmode="tel" value="<?= h($edit['parent_phone'] ?? '') ?>" placeholder="0912345678" style="width:9em"></label>
     <button class="primary"><?= $edit ? t('Lưu') : t('Thêm') ?></button>
   </form>
 </section>
@@ -285,12 +297,12 @@ page_head($c['name'], 'classes.php');
 
 <?php if ($sessions): ?>
 <section class="card">
-  <h2><?= te('Các buổi đã dạy') ?></h2>
+  <h2><?= te('Các buổi đã dạy') ?> <a class="btn small" href="attendance.php?class=<?= $cid ?>">🗓 <?= te('Điểm danh cả lớp') ?></a></h2>
   <table class="grid compact">
     <thead><tr><th><?= te('Bắt đầu') ?></th><th><?= te('Bộ câu hỏi') ?></th><th><?= te('Trạng thái') ?></th><th></th></tr></thead>
     <tbody><?php foreach ($sessions as $s): ?>
       <tr><td><?= h($s['started_at']) ?></td><td><?= h($s['title']) ?> <?= $s['kind'] === 'test' ? ('<span class="tag">' . t('kiểm tra') . '</span>') : '' ?></td><td><?= $s['status'] === 'running' ? ('<b>' . t('đang học') . '</b>') : t('đã kết thúc') ?><?= $s['kind'] === 'test' && !$s['released'] ? (' · ' . '<span class="muted small">' . t('chưa công bố') . '</span>') : '' ?></td>
-        <td class="right"><a href="session.php?id=<?= $s['id'] ?>"><?= te('Điều khiển') ?></a> · <a href="results.php?id=<?= $s['id'] ?>"><?= te('Kết quả') ?></a></td></tr>
+        <td class="right"><a href="session.php?id=<?= $s['id'] ?>"><?= te('Điều khiển') ?></a> · <a href="results.php?id=<?= $s['id'] ?>"><?= te('Kết quả') ?></a> · <a href="attendance.php?session=<?= $s['id'] ?>"><?= te('Điểm danh') ?></a></td></tr>
     <?php endforeach; ?></tbody>
   </table>
 </section>

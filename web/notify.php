@@ -1,6 +1,6 @@
 <?php
 // Thông báo kết quả buổi học cho phụ huynh qua Zalo OA / SMS: cấu hình (quản trị server) và nhật ký gửi (giáo viên).
-require __DIR__ . '/lib/notify.php';
+require_once __DIR__ . '/lib/notify.php';
 $t = require_login();
 $admin = is_admin();
 

@@ -4,10 +4,13 @@ DST=/opt/ars-server
 ini() { sudo awk -v s="[$1]" -v k="$2" '$0==s{f=1;next} /^\[/{f=0} f && $1==k {sub(/^[^=]*= */,""); print; exit}' $DST/config.ini 2>/dev/null; }
 case "${1:-}" in
   status)
-    for s in apache2 mariadb mosquitto bluetooth ars-ingest ars-bridge ars-gatt ars-ble ars-mdns; do
-      printf '%-12s %s\n' "$s" "$(systemctl is-active $s 2>/dev/null || echo '?')"
+    for s in apache2 mariadb mosquitto bluetooth ars-ingest ars-bridge ars-gatt ars-ble ars-mdns ars-autosync.timer; do
+      st=$(systemctl is-active $s 2>/dev/null); printf '%-12s %s\n' "$s" "${st:-?}"
     done
     ;;
+  sync)   # đẩy lên Cloud ngay (bình thường ars-autosync.timer tự làm mỗi 3 phút khi máy bật); ars sync log = nhật ký
+    if [ "${2:-}" = log ]; then journalctl -u ars-autosync -n 30 --no-pager; exit; fi
+    sudo -u ars ARS_CONFIG=$DST/config.ini php $DST/deploy/ars-autosync.php --now ;;
   logs)   journalctl -u ars-ingest -u ars-bridge -u ars-gatt -u ars-ble -f -n 50 ;;
   restart) svc=ars-bridge; systemctl is-enabled -q ars-ble 2>/dev/null && svc=ars-ble; systemctl is-enabled -q ars-gatt 2>/dev/null && svc=ars-gatt
     sudo systemctl restart ars-ingest $svc && echo "đã khởi động lại ingest + $svc" ;;
@@ -132,5 +135,5 @@ print("lỗi      :", bad or "không")'
   backup) # sao lưu CSDL: ars backup [file]
     f="${2:-ars_$(date +%Y%m%d_%H%M).sql}"; sudo mysqldump --single-transaction ars > "$f" && echo "đã lưu $f" ;;
   *)
-    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | logs | restart | ble | ble-tune | gateway usb|gatt|ble | gw | gatt-probe [n] | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
+    echo "Dùng: ars links | public on|off|status | lan-name ten.local | status | sync [log] | logs | restart | ble | ble-tune | gateway usb|gatt|ble | gw | gatt-probe [n] | sim [n] [room] | ports | mqtt | db | sql \"<câu SQL>\" | tables | watch [n] | gv | reset-gv [tên] | backup [file]" ;;
 esac

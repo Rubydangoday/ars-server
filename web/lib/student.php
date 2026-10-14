@@ -85,7 +85,7 @@ function my_items(string $code, ?int $class_id = null): array {
       . 'sq.id AS sq_id, q.id AS question_id, q.position, q.content, q.topic, q.explanation, q.n_options, q.correct, '
       . 'q.opt_a,q.opt_b,q.opt_c,q.opt_d,q.opt_e,q.opt_f,q.opt_g,q.opt_h,q.opt_i,q.opt_j, '
       . 'f.answer, TIMESTAMPDIFF(MICROSECOND, sq.opened_at, f.received_at)/1e6 AS t_answer, '
-      . '(SELECT 1 FROM session_logins l WHERE l.session_id=s.id AND l.seat_no=st.seat_no) AS present, '
+      . '(SELECT 1 FROM attendance_final af WHERE af.session_id=s.id AND af.seat_no=st.seat_no AND af.status="present") AS present, '
       . '(SELECT COUNT(*) FROM final_answers x WHERE x.session_q_id=sq.id) AS class_n, '
       . '(SELECT COUNT(*) FROM final_answers x WHERE x.session_q_id=sq.id AND x.answer=q.correct) AS class_ok '
       . 'FROM students st JOIN classes c ON c.id=st.class_id '

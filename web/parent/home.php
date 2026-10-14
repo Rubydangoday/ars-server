@@ -1,5 +1,5 @@
 <?php
-require __DIR__.'/../lib/lms.php';require __DIR__.'/../lib/notify.php';require __DIR__.'/../lib/rewards.php';require __DIR__.'/../lib/oauth.php';$p=require_parent();
+require __DIR__.'/../lib/lms.php';require_once __DIR__.'/../lib/notify.php';require __DIR__.'/../lib/attendance.php';require __DIR__.'/../lib/rewards.php';require __DIR__.'/../lib/oauth.php';$p=require_parent();
 if(($_POST['action']??'')==='notify'){ // phụ huynh tự đăng ký nhận tin (đồng ý), có thể tắt bất cứ lúc nào
  $ch=$_POST['channel']??'none';$phone=normalize_phone((string)($_POST['phone']??''));
  if($ch!=='none'&&!isset(notify_channels()[$ch]))flash(t('Kênh này chưa được nhà trường bật.'),'bad');
@@ -31,6 +31,8 @@ if ($tab === 'account') {
         echo '</select></label><label>' . te('Số điện thoại') . '<input name="phone" inputmode="tel" placeholder="09xxxxxxxx" value="' . h($pp['phone'] ?? '') . '"></label><button class="primary">' . te('Lưu') . '</button></form>';
     } else echo '<p class="muted">' . te('Nhà trường chưa bật kênh thông báo Zalo / SMS.') . '</p>';
     echo '</section>';
+    echo '<section class="card">' . ui_card_head('🔒 ' . te('Đăng nhập và mật khẩu')) . '<p>' . te('Tên đăng nhập') . ': <b translate="no">' . h($pp['username']) . '</b></p>'
+       . '<a class="btn" href="password.php">' . te('Đổi mật khẩu') . '</a></section>';
     if ($om = oauth_manage_html('parent', (string)$p['id'], '../')) echo '<section class="card" id="account">' . $om . '</section>';
     echo '</div>';
     page_foot(); exit;
@@ -52,7 +54,7 @@ foreach ($items as $r) {
 uasort($topics, fn($a, $b) => ($a['n'] ? $a['ok'] / $a['n'] : 0) <=> ($b['n'] ? $b['ok'] / $b['n'] : 0));
 $pts = null; foreach (class_points($cid) as $row) if ($row['code'] === $code) $pts = $row;
 // Chuyên cần tính theo điểm danh thật, kể cả buổi không có câu chấm điểm.
-$session_rows = qall('SELECT s.id,s.started_at,qs.title,(SELECT COUNT(*) FROM session_logins l WHERE l.session_id=s.id AND l.seat_no=?) AS present,(SELECT COUNT(*) FROM session_questions sq JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND q.correct IS NOT NULL) AS n,(SELECT COUNT(*) FROM final_answers f JOIN session_questions sq ON sq.id=f.session_q_id JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND f.seat_no=? AND f.answer=q.correct) AS ok FROM sessions s JOIN question_sets qs ON qs.id=s.set_id WHERE s.class_id=? AND s.status="ended" AND s.released=1 ORDER BY s.started_at DESC', [$child['seat_no'], $child['seat_no'], $cid]);
+$session_rows = qall('SELECT s.id,s.started_at,qs.title,(SELECT COUNT(*) FROM attendance_final af WHERE af.session_id=s.id AND af.seat_no=? AND af.status="present") AS present,(SELECT COUNT(*) FROM session_questions sq JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND q.correct IS NOT NULL) AS n,(SELECT COUNT(*) FROM final_answers f JOIN session_questions sq ON sq.id=f.session_q_id JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND f.seat_no=? AND f.answer=q.correct) AS ok FROM sessions s JOIN question_sets qs ON qs.id=s.set_id WHERE s.class_id=? AND s.status="ended" AND s.released=1 ORDER BY s.started_at DESC', [$child['seat_no'], $child['seat_no'], $cid]);
 $n_ses = count($session_rows); $n_present = count(array_filter($session_rows, fn($r) => $r['present']));
 $scores = array_map(fn($r) => 10 * $r['ok'] / $r['n'], array_filter($session_rows, fn($r) => $r['present'] && $r['n']));
 $avg = $scores ? round(array_sum($scores) / count($scores), 1) : null;
@@ -90,6 +92,17 @@ echo '<div class="ui-kpis">'
    . ui_kpi('🎯', $avg === null ? '—' : (string)$avg, t('Điểm trung bình trên lớp / 10'), $trend !== null ? te('3 buổi gần nhất: {v}', ['v' => $trend]) : '', 'blue')
    . ui_kpi('📝', $n_sub . '/' . count($hw), t('Bài tập đã nộp'), count($hw) - $n_sub ? te('{n} bài chưa nộp', ['n' => count($hw) - $n_sub]) : (count($hw) ? te('Đã nộp đủ ✓') : ''), 'violet')
    . '</div>';
+// thông báo từ lớp học: điểm danh + kết quả mỗi buổi (lib/attendance.php), chưa đọc hiện trước
+$msgs = array_values(array_filter(parent_messages_for((int)$p['id'], 40), fn($m) => $m['student_code'] === $code));
+$unread = count(array_filter($msgs, fn($m) => $m['read_at'] === null));
+echo '<section class="card p-inbox">' . ui_card_head('🔔 ' . te('Thông báo') . ($unread ? ' <span class="tag warn">' . te('{n} mới', ['n' => $unread]) . '</span>' : ''),
+        t('Điểm danh và kết quả sau mỗi buổi học / kiểm tra bằng Remote.'));
+if (!$msgs) echo '<p class="muted">' . te('Chưa có thông báo nào. Sau mỗi buổi học thầy cô kết thúc, thông báo điểm danh của con sẽ hiện ở đây.') . '</p>';
+foreach (array_slice($msgs, 0, 10) as $m)
+    echo '<div class="p-msg' . ($m['read_at'] === null ? ' unread' : '') . '"><b>' . h($m['title']) . '</b>' . ($m['read_at'] === null ? ' <span class="tag info">' . te('mới') . '</span>' : '')
+       . '<p>' . h($m['body']) . '</p><small class="muted">' . h($m['class_name']) . ' · ' . h(date('d/m/Y H:i', strtotime($m['created_at']))) . '</small></div>';
+echo '</section>';
+if ($unread) q('UPDATE parent_messages SET read_at=NOW() WHERE parent_id=? AND student_code=? AND read_at IS NULL', [(int)$p['id'], $code]);
 echo '<div class="p-grid"><div class="p-main">';
 // biểu đồ
 echo '<section class="card">' . ui_card_head('📈 ' . te('Tiến độ theo ngày / tuần'), t('Điểm trung bình các buổi Remote trên lớp (thang 10).'),

@@ -4,7 +4,7 @@ Chạy SAU http_smoke.py (dùng lại fixture). PHP server phải có nhiều wo
   PHP_CLI_SERVER_WORKERS=4 ARS_CONFIG=... php -S 127.0.0.1:8091 -t web
 Cloud = cùng server thử nghiệm (giáo viên 2 nhận dữ liệu của giáo viên 1). Zalo/SMS dùng stub HTTP localhost:8093, không gửi ra ngoài.
 """
-import os, sys, json, re, threading, configparser
+import subprocess, os, sys, json, re, threading, configparser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import requests, pymysql
 from bs4 import BeautifulSoup
@@ -170,7 +170,25 @@ try:
     cs4 = sql1('SELECT cloud_id FROM sync_map WHERE teacher_id=%s AND entity="session" AND local_id=%s', (t2id, s4))['cloud_id']
     expect(sql1('SELECT released FROM sessions WHERE id=%s', (cs4,))['released'] == 1, 'Release state synced')
     expect(len(inbox) == n + 1 and 'thông báo' in flash(r), 'Cloud auto-notifies parents on synced release')
+    # Tự đồng bộ (ars-autosync.timer): buổi mới lên Cloud không cần bấm nút; không có gì mới thì không gửi
+    autosync = lambda *a: subprocess.run(['php', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'deploy', 'ars-autosync.php'), *a],
+                                         capture_output=True, text=True, env=os.environ)
+    expect('Tự động: BẬT' in page(t1, 'sync.php').text, 'Auto-sync on by default')
+    s5 = ended_session(); a = autosync()
+    expect(a.returncode == 0 and 'Đã đồng bộ' in a.stdout and sql1('SELECT cloud_synced_at FROM sessions WHERE id=%s', (s5,))['cloud_synced_at'] is not None, 'Auto-sync pushes a new session: ' + a.stdout + a.stderr)
+    expect(sql1('SELECT message FROM sync_log WHERE teacher_id=%s ORDER BY id DESC LIMIT 1', (t1id,))['message'].startswith('[Tự động]'), 'Auto-sync logged as automatic')
+    expect(autosync().stdout == '', 'Auto-sync idle when nothing new')
+    r = post(t1, 'sync.php', {'action': 'auto', 'on': 0}); expect('Đã tắt tự đồng bộ' in flash(r), 'Teacher can turn auto-sync off')
+    s6 = ended_session(); autosync()
+    expect(sql1('SELECT cloud_synced_at FROM sessions WHERE id=%s', (s6,))['cloud_synced_at'] is None, 'Auto-sync off: session left for manual sync')
+    post(t1, 'sync.php', {'action': 'auto', 'on': 1})
     sql('UPDATE sync_tokens SET revoked=1 WHERE teacher_id=%s', (t2id,))
+    n_log = sql1('SELECT COUNT(*) n FROM sync_log WHERE teacher_id=%s', (t1id,))['n']
+    a = autosync(); expect('Lỗi' in a.stdout and 'thu hồi' in a.stdout, 'Auto-sync reports Cloud error')
+    a = autosync(); expect(a.stdout == '', 'Auto-sync backs off after an error (retry later)')
+    a = autosync('--now'); expect(a.returncode == 1, '"ars sync" (--now) retries immediately, exit 1 on error')
+    expect(sql1('SELECT COUNT(*) n FROM sync_log WHERE teacher_id=%s', (t1id,))['n'] == n_log + 1, 'Repeated auto-sync errors logged once')
+    expect('tự thử lại' in page(t1, 'sync.php').text, 'Sync page shows auto-sync retry state')
     r = post(t1, 'sync.php', {'action': 'push'}); expect('thu hồi' in flash(r), 'Revoked token blocked')
     page(t1, 'sync.php')
 finally:

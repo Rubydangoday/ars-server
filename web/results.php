@@ -2,7 +2,8 @@
 // Kết quả một buổi: theo câu (p, D, phương án nhiễu, thời gian) và theo học sinh; xuất Excel.
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/stats.php';
-require __DIR__ . '/lib/notify.php';
+require_once __DIR__ . '/lib/notify.php';
+require __DIR__ . '/lib/attendance.php';
 require_login();
 $ses = own_session((int)($_GET['id'] ?? 0));
 if (($_POST['action'] ?? '') === 'notify') {
@@ -17,6 +18,7 @@ if (($_POST['action'] ?? '') === 'notify') {
 }
 if (($_POST['action'] ?? '') === 'release') {
     q('UPDATE sessions SET released=?, cloud_synced_at=NULL WHERE id=?', [(int)($_POST['on'] ?? 1), $ses['id']]);   // lần Sync to Cloud sau gửi lại trạng thái công bố
+    parent_notify_session((int)$ses['id']);          // buổi đã kết thúc: tin phụ huynh thêm / bỏ điểm theo trạng thái công bố
     flash((int)($_POST['on'] ?? 1) ? t('Đã công bố: học sinh xem lại được bài này sau khi buổi kết thúc.') : t('Đã ẩn kết quả với học sinh.'));
     redirect('results.php?id=' . (int)$ses['id']);
 }
@@ -31,6 +33,7 @@ page_head(t('Kết quả') . ' — ' . $ses['class_name'], 'results.php');
 <h1><?= te('Kết quả:') ?> <?= h($ses['set_title']) ?></h1>
 <div class="row">
   <a class="btn primary" href="export.php?id=<?= (int)$ses['id'] ?>"><?= te('Xuất Excel (.xlsx)') ?></a>
+  <a class="btn" href="attendance.php?session=<?= (int)$ses['id'] ?>">📋 <?= te('Điểm danh') ?></a>
   <a class="btn" href="export.php?id=<?= (int)$ses['id'] ?>&format=csv" title="<?= te('Bảng điểm theo học sinh, mở được bằng Excel / Google Sheets') ?>"><?= te('Xuất điểm CSV') ?></a>
   <a class="btn" href="session.php?id=<?= (int)$ses['id'] ?>"><?= te('Bảng điều khiển') ?></a>
   <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="action" value="release"><input type="hidden" name="on" value="<?= $ses['released'] ? 0 : 1 ?>">

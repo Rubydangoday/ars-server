@@ -3,6 +3,7 @@
 // Một chiều, idempotent: gửi lại nhiều lần không nhân đôi dữ liệu. Cloud ánh xạ id local → id cloud trong sync_map.
 declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/notify.php';
 
 const SYNC_VERSION = 1;
 const SYNC_BATCH_SESSIONS = 20;     // số buổi mỗi lần gửi, giữ gói JSON nhỏ
@@ -38,12 +39,13 @@ function sync_payload(int $teacher_id, bool $all, int $after = 0): array {
     return [
         'version' => SYNC_VERSION, 'source' => server_uuid(),
         'classes' => $classes,
-        'students' => qall("SELECT class_id, seat_no, student_code, full_name FROM students WHERE class_id IN ($in)"),
+        'students' => qall("SELECT class_id, seat_no, student_code, full_name, parent_phone FROM students WHERE class_id IN ($in)"),
         'sets' => qall("SELECT id, title, purpose, description FROM question_sets WHERE id IN ($setin)"),
         'questions' => qall("SELECT id, set_id, position, content, topic, difficulty, n_options, opt_a,opt_b,opt_c,opt_d,opt_e,opt_f,opt_g,opt_h,opt_i,opt_j, correct, explanation, time_limit FROM questions WHERE set_id IN ($setin)"),
         'sessions' => $sessions,
         'session_questions' => qall("SELECT id, session_id, question_id, opened_at, closed_at, show_result FROM session_questions WHERE session_id IN ($sin)"),
         'logins' => qall("SELECT session_id, seat_no, mac, logged_at FROM session_logins WHERE session_id IN ($sin)"),
+        'attendance' => qall("SELECT session_id, seat_no, status, note FROM session_attendance WHERE session_id IN ($sin)"),   // giáo viên sửa tay
         'answers' => qall("SELECT f.session_q_id, f.seat_no, f.mac, f.answer, f.received_at FROM final_answers f JOIN session_questions sq ON sq.id=f.session_q_id WHERE sq.session_id IN ($sin)"),
     ];
 }
@@ -66,7 +68,8 @@ function sync_http(string $url, string $token, array $body): array {
 }
 
 /** Đẩy toàn bộ buổi chưa đồng bộ lên Cloud theo từng lô. Trả về tóm tắt. */
-function sync_push(int $teacher_id, bool $all = false): string {
+function sync_push(int $teacher_id, bool $all = false, string $via = 'manual'): string {
+    $tag = $via === 'auto' ? '[Tự động] ' : '';
     $t = q1('SELECT cloud_url, cloud_token FROM teachers WHERE id=?', [$teacher_id]);
     if (!$t['cloud_url'] || !$t['cloud_token']) throw new RuntimeException('Chưa cấu hình địa chỉ Cloud và mã đồng bộ.');
     $n_sessions = 0; $n_answers = 0; $notified = 0; $after = 0;
@@ -79,12 +82,37 @@ function sync_push(int $teacher_id, bool $all = false): string {
             $n_sessions += count($ids); $n_answers += count($p['answers']); $notified += (int)($j['notified'] ?? 0);
         } while (count($ids) === SYNC_BATCH_SESSIONS);
     } catch (Throwable $e) {
-        sync_log($teacher_id, 'push', false, $e->getMessage() . ($n_sessions ? " (đã gửi $n_sessions buổi trước khi lỗi)" : ''));
+        if (!$tag || !setting('sync_auto_fail_' . $teacher_id))           // tự động mất mạng liên tục: chỉ ghi lỗi đầu tiên
+            sync_log($teacher_id, 'push', false, $tag . $e->getMessage() . ($n_sessions ? " (đã gửi $n_sessions buổi trước khi lỗi)" : ''));
         throw $e;
     }
     $msg = "Đã đồng bộ lớp, học sinh và $n_sessions buổi ($n_answers câu trả lời) lên Cloud." . ($notified ? " Cloud đã gửi $notified thông báo cho phụ huynh." : '');
-    sync_log($teacher_id, 'push', true, $msg);
+    sync_log($teacher_id, 'push', true, $tag . $msg);
     return $msg;
+}
+
+/** Tự đồng bộ (deploy/ars-autosync.php, systemd timer mỗi 3 phút khi máy chủ bật): mọi giáo viên đã nhập Cloud và
+ *  không tắt "Tự động". Chỉ gửi khi có buổi chưa đồng bộ (kết thúc buổi, công bố, sửa điểm danh) hoặc đã quá 6 giờ
+ *  (cập nhật lớp / danh sách học sinh). Mất Internet: chờ lâu dần 3 → 6 → … → 30 phút, chỉ ghi nhật ký lỗi đầu tiên.
+ *  Trả về [teacher_id => thông báo] cho các giáo viên đã thử. */
+function sync_auto_run(bool $force = false): array {
+    $out = [];
+    foreach (qall('SELECT id FROM teachers WHERE active=1 AND cloud_auto=1 AND cloud_url IS NOT NULL AND cloud_token IS NOT NULL') as $r) {
+        $tid = (int)$r['id'];
+        $fail = json_decode(setting('sync_auto_fail_' . $tid) ?? '', true) ?: ['n' => 0, 'at' => 0];
+        if (!$force && $fail['n'] && time() - $fail['at'] < 60 * min(30, 3 * 2 ** ($fail['n'] - 1))) continue;   // đang chờ thử lại
+        $pending = (int)qv('SELECT COUNT(*) FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.teacher_id=? AND s.status="ended" AND s.cloud_synced_at IS NULL', [$tid]);
+        $last = qv('SELECT MAX(created_at) FROM sync_log WHERE teacher_id=? AND direction="push" AND ok=1', [$tid]);
+        if (!$force && !$pending && $last && strtotime($last) > time() - 6 * 3600) continue;           // không có gì mới
+        try {
+            $out[$tid] = sync_push($tid, false, 'auto');
+            setting_set('sync_auto_fail_' . $tid, '');
+        } catch (Throwable $e) {
+            $out[$tid] = 'Lỗi: ' . $e->getMessage();
+            setting_set('sync_auto_fail_' . $tid, json_encode(['n' => $fail['n'] + 1, 'at' => time()]));
+        }
+    }
+    return $out;
 }
 
 // ------------------------------------------------------------------ phía Cloud (nhận)
@@ -142,8 +170,10 @@ function sync_receive(int $tid, array $p): array {
             $cid = $class_ids[(int)($s['class_id'] ?? 0)] ?? null;
             $seat = (int)($s['seat_no'] ?? 0);
             if (!$cid || $seat < 1 || $seat > 99) throw new RuntimeException('Học sinh không hợp lệ.');
-            q('INSERT INTO students (class_id, seat_no, student_code, full_name) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE student_code=VALUES(student_code), full_name=VALUES(full_name)',
-              [$cid, $seat, $str($s['student_code'] ?? null, 20) ?: null, mb_substr((string)($s['full_name'] ?? ''), 0, 100)]);
+            // parent_phone: để giáo viên cấp tài khoản phụ huynh trên Cloud (server lớp học cũ không gửi → giữ nguyên)
+            q('INSERT INTO students (class_id, seat_no, student_code, full_name, parent_phone) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE student_code=VALUES(student_code), full_name=VALUES(full_name)'
+              . (array_key_exists('parent_phone', $s) ? ', parent_phone=VALUES(parent_phone)' : ''),
+              [$cid, $seat, $str($s['student_code'] ?? null, 20) ?: null, mb_substr((string)($s['full_name'] ?? ''), 0, 100), normalize_phone((string)($s['parent_phone'] ?? ''))]);
             $seats[$cid][] = $seat;
             $count['students']++;
         }
@@ -216,6 +246,15 @@ function sync_receive(int $tid, array $p): array {
             if (!$ses) throw new RuntimeException('Điểm danh không hợp lệ.');
             q('INSERT IGNORE INTO session_logins (session_id, seat_no, mac, logged_at) VALUES (?,?,?,?)', [$ses, (int)$l['seat_no'], mb_substr((string)$l['mac'], 0, 17), $time($l['logged_at'] ?? null)]);
         }
+        if (isset($p['attendance'])) {                   // điểm danh giáo viên sửa tay: Cloud giống hệt server lớp học
+            foreach ($ses_ids as $ses) q('DELETE FROM session_attendance WHERE session_id=?', [$ses]);
+            foreach ($p['attendance'] as $a) {
+                $ses = $ses_ids[(int)($a['session_id'] ?? 0)] ?? null;
+                if (!$ses || !in_array($a['status'] ?? '', ['present', 'absent', 'excused'], true)) throw new RuntimeException('Điểm danh không hợp lệ.');
+                q('INSERT INTO session_attendance (session_id, seat_no, status, note) VALUES (?,?,?,?)',
+                  [$ses, (int)$a['seat_no'], $a['status'], isset($a['note']) ? mb_substr((string)$a['note'], 0, 200) : null]);
+            }
+        }
         foreach ($p['answers'] ?? [] as $a) {
             $sq = $sq_ids[(int)($a['session_q_id'] ?? 0)] ?? null;
             if (!$sq || !preg_match('/^[A-J]$/', (string)($a['answer'] ?? ''))) throw new RuntimeException('Câu trả lời không hợp lệ.');
@@ -225,5 +264,5 @@ function sync_receive(int $tid, array $p): array {
         }
         db()->commit();
     } catch (Throwable $e) { if (db()->inTransaction()) db()->rollBack(); throw $e; }
-    return [$count, $released];
+    return [$count, $released, array_values($ses_ids)];
 }

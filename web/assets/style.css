@@ -1233,3 +1233,10 @@ body.app .ai-addall.primary b { background: rgba(255,255,255,.25); color: #fff; 
 .gw-ways .mode { display: flex; flex-direction: column; gap: 6px; padding: 14px; border: 1px solid #e9ecf2; border-radius: 14px; background: #fafbfd; cursor: default; }
 .gw-ways .mode .ico { margin-right: 6px; }
 @media (max-width: 760px) { .gw-ways { grid-template-columns: 1fr; } }
+
+/* Thông báo cho phụ huynh (điểm danh + kết quả mỗi buổi) — parent/home.php */
+.p-inbox .p-msg { padding: 10px 12px; border-radius: 10px; margin: 6px 0; border: 1px solid var(--line, #e5e7eb); }
+.p-inbox .p-msg p { margin: 4px 0; }
+.p-inbox .p-msg.unread { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 7%, transparent); }
+/* Bảng điểm danh cả lớp — attendance.php */
+td.att-ok { color: var(--ok); font-weight: 600; } td.att-bad { color: var(--bad); background: var(--bad-bg); }

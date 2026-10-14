@@ -36,9 +36,9 @@ $ok = count(array_filter($mine, fn($r) => $r['status'] === 'right'));
 $wrong = array_values(array_filter($mine, fn($r) => in_array($r['status'], ['wrong', 'blank'], true)));
 $blank = count(array_filter($mine, fn($r) => $r['status'] === 'blank'));
 // điểm trung bình lớp (học sinh có mặt) — chỉ có với buổi Remote trên lớp
-$cls = $kind !== 'remote' ? null : q1('SELECT COUNT(DISTINCT l.seat_no) n_present, SUM(f.answer=q.correct) n_ok FROM session_logins l '
+$cls = $kind !== 'remote' ? null : q1('SELECT COUNT(DISTINCT l.seat_no) n_present, SUM(f.answer=q.correct) n_ok FROM attendance_final l '
         . 'LEFT JOIN session_questions sq ON sq.session_id=l.session_id LEFT JOIN questions q ON q.id=sq.question_id AND q.correct IS NOT NULL AND q.correct<>"" '
-        . 'LEFT JOIN final_answers f ON f.session_q_id=sq.id AND f.seat_no=l.seat_no AND q.id IS NOT NULL WHERE l.session_id=?', [$rid]);
+        . 'LEFT JOIN final_answers f ON f.session_q_id=sq.id AND f.seat_no=l.seat_no AND q.id IS NOT NULL WHERE l.session_id=? AND l.status="present"', [$rid]);
 $class_avg = ($cls && $cls['n_present'] && $n) ? $cls['n_ok'] / $cls['n_present'] * 10 / $n : null;
 $score = $n ? $ok * 10 / $n : 0;
 

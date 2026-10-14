@@ -1,12 +1,13 @@
 <?php
-require __DIR__.'/../lib/lms.php';require __DIR__.'/../lib/oauth.php';require __DIR__.'/../lib/auth_ui.php';
+require __DIR__.'/../lib/lms.php';require __DIR__.'/../lib/oauth.php';require __DIR__.'/../lib/auth_ui.php';require_once __DIR__.'/../lib/notify.php';
 if(isset($_GET['logout'])){unset($_SESSION['parent']);redirect('index.php');}
 $pending=oauth_pending('parent'); // đến từ "Đăng nhập với Google": chỉ cần mã mời, không cần tên đăng nhập / mật khẩu
 if($_SERVER['REQUEST_METHOD']==='POST')try{
  $act=$_POST['action']??'';$user=trim($_POST['username']??'');$pass=$_POST['password']??'';
  if($act==='register'&&$pending){$user=oauth_username_suggest($pending['email']??$pending['name'],'parents');$pass=bin2hex(random_bytes(24));}
+ if($act==='login'&&($ph=normalize_phone($user)))$user=$ph; // tài khoản giáo viên cấp: tên đăng nhập = SĐT (nhận cả 0912 345 678, +84…)
  if(!preg_match('/^[A-Za-z0-9_.-]{3,50}$/',$user))throw new RuntimeException(t('Tên đăng nhập: 3–50 ký tự chữ/số.'));
- if($act==='login'){$p=q1('SELECT * FROM parents WHERE username=?',[$user]);if(!$p||!password_verify($pass,$p['password_hash'])){usleep(400000);throw new RuntimeException(t('Thông tin đăng nhập không đúng.'));}session_regenerate_id(true);$_SESSION['parent']=['id'=>$p['id'],'full_name'=>$p['full_name']];apply_user_lang($p['lang']??null);redirect('home.php');}
+ if($act==='login'){$p=q1('SELECT * FROM parents WHERE username=?',[$user]);if(!$p||!password_verify($pass,$p['password_hash'])){usleep(400000);throw new RuntimeException(t('Thông tin đăng nhập không đúng.'));}session_regenerate_id(true);$_SESSION['parent']=['id'=>$p['id'],'full_name'=>$p['full_name'],'must_change'=>(int)$p['must_change_pw']];apply_user_lang($p['lang']??null);redirect($p['must_change_pw']?'password.php':'home.php');}
  if($act==='register'){
   if(strlen($pass)<10)throw new RuntimeException(t('Mật khẩu tối thiểu 10 ký tự.'));$hash=parent_invite_hash((string)($_POST['invite']??''));
   db()->beginTransaction();$i=q1('SELECT * FROM parent_invites WHERE token_hash=? AND used_at IS NULL AND expires_at>NOW() FOR UPDATE',[$hash]);
@@ -22,8 +23,8 @@ auth_open('parent',$tab==='login'?'Chào phụ huynh 👋':'Tạo tài khoản p
 echo '<nav class="auth-tabs"><a href="index.php"'.($tab==='login'?' class="on"':'').'>'.te('Đăng nhập').'</a><a href="index.php?tab=register"'.($tab==='register'?' class="on"':'').'>'.te('Đăng ký bằng mã mời').'</a></nav>';
 if($tab==='login'){
  echo oauth_buttons('parent','login','../','Đăng nhập với',[],true).auth_divider();
- echo '<form method="post" class="stack">'.csrf_field().'<label>'.te('Tên đăng nhập').'<input name="username" autocomplete="username" required placeholder="'.te('Tên đăng nhập của bạn').'"></label><label>'.te('Mật khẩu').'<input type="password" name="password" autocomplete="current-password" required placeholder="••••••••"></label><button class="primary" name="action" value="login">'.te('Đăng nhập').'</button></form>';
- echo '<p class="auth-links"><a href="index.php?tab=register">'.te('Chưa có tài khoản? Đăng ký').'</a><span class="muted small">'.te('Quên mật khẩu: nhờ thầy cô cấp mã mời mới').'</span></p>';
+ echo '<form method="post" class="stack">'.csrf_field().'<label>'.te('Số điện thoại hoặc tên đăng nhập').'<input name="username" autocomplete="username" required placeholder="'.te('VD: 0912345678').'"></label><label>'.te('Mật khẩu').'<input type="password" name="password" autocomplete="current-password" required placeholder="••••••••"></label><button class="primary" name="action" value="login">'.te('Đăng nhập').'</button></form>';
+ echo '<p class="auth-links"><a href="index.php?tab=register">'.te('Chưa có tài khoản? Đăng ký').'</a><span class="muted small">'.te('Quên mật khẩu: nhờ thầy cô cấp lại mật khẩu').'</span></p>';
 }else{
  // Một form: nút "Tạo tài khoản" đứng trước trong DOM (phím Enter), nút Google gửi sang ../oauth.php bằng formaction.
  if($pending)echo oauth_pending_banner($pending,'../');   // ngoài form đăng ký: form "Huỷ" không được lồng

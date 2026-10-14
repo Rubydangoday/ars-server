@@ -4,6 +4,18 @@
 
 Trang phụ huynh giúp bạn xem con học thế nào trên lớp: điểm từng buổi, chuyên cần, bài tập về nhà, kiến thức con còn yếu và nhận xét của thầy cô. Phụ huynh **chỉ xem**, không sửa được điểm hay bài làm.
 
+## 0. Đăng nhập bằng số điện thoại (thầy cô cấp tài khoản)
+
+Nếu thầy cô gửi cho bạn **số điện thoại + mật khẩu lần đầu**:
+1. Mở trang phụ huynh: **https://ngoc-legion-5-15arp8.tail4be8bf.ts.net/ars/parent/** hoặc link thầy cô gửi.
+2. Ô **Số điện thoại hoặc tên đăng nhập**: nhập SĐT của bạn (ví dụ `0912345678`). Ô **Mật khẩu**: nhập mật khẩu trên phiếu.
+3. Lần đầu, trang sẽ yêu cầu **đổi mật khẩu**: đặt mật khẩu riêng (từ 8 ký tự, có cả chữ và số), nhập lại một lần nữa rồi bấm **Lưu mật khẩu mới**.
+4. Từ lần sau, đăng nhập bằng SĐT và mật khẩu mới. Nếu có nhiều con trong trường mà cùng SĐT phụ huynh, cả hai con đều hiện trong một tài khoản.
+
+Muốn đổi mật khẩu sau này: vào tab **Tài khoản**, mục **Đăng nhập và mật khẩu**, bấm **Đổi mật khẩu**. Quên mật khẩu: nhờ thầy cô **cấp lại mật khẩu**.
+
+Nếu thầy cô gửi **mã mời** thay vì SĐT và mật khẩu, làm theo mục 1 và 2 dưới đây.
+
 ## 1. Nhận mã mời
 
 Thầy cô gửi riêng cho bạn một **mã mời** cho từng con:
@@ -30,6 +42,7 @@ Sau khi đăng nhập, tab **Tổng quan** có:
 
 | Mục | Xem được gì |
 |---|---|
+| 🔔 **Thông báo** | Sau mỗi buổi học / kiểm tra bằng Remote: con **có mặt / vắng / vắng có phép**, kèm điểm khi thầy cô đã công bố. Tin mới được tô màu và có nhãn *mới* |
 | 👪 **Con đã liên kết** | Chọn con muốn xem (nếu có nhiều con); hạng trong lớp, tỉ lệ chuyên cần, điểm 3 buổi gần nhất, số bài chưa nộp |
 | 📈 **Tiến độ theo ngày / tuần** | Biểu đồ điểm theo thời gian |
 | 🗓 **Điểm và chuyên cần trên lớp** | Từng buổi: ngày, bài, có mặt hay vắng, điểm thang 10 |
@@ -37,6 +50,8 @@ Sau khi đăng nhập, tab **Tổng quan** có:
 | 🧠 **Kiến thức trên lớp** | Chủ đề con làm tốt / còn yếu, để nhắc con ôn |
 | 💬 **Nhận xét giáo viên** | Nhận xét thầy cô gửi riêng cho con |
 | 📚 **Tài liệu bài giảng** | Bài giảng các buổi, để cùng con xem lại |
+
+Khi thầy cô sửa điểm danh hoặc công bố điểm bài kiểm tra, thông báo của buổi đó được cập nhật và hiện lại là *mới*. Thông báo trong web luôn miễn phí và không cần Zalo / SMS.
 
 Góc trên có nút **VI / EN** đổi ngôn ngữ.
 

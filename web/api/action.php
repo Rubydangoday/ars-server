@@ -2,6 +2,7 @@
 // Lệnh từ bảng điều khiển (POST, JSON trả về). Mỗi lệnh ghi DB rồi tăng state_rev
 // để ingest.py phát lại STATE cho gateway trong ≤ 0,3 s.
 require __DIR__ . '/../lib/bootstrap.php';
+require __DIR__ . '/../lib/attendance.php';
 header('Content-Type: application/json; charset=utf-8');
 require_login_json();
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit; }
@@ -61,6 +62,8 @@ switch ($act) {
     case 'end':
         q('UPDATE session_questions SET status="closed", closed_at=NOW(3) WHERE session_id=? AND status="open"', [$sid]);
         q('UPDATE sessions SET status="ended", ended_at=NOW() WHERE id=?', [$sid]);
+        // điểm danh tự động (LOGIN / có câu trả lời) → tin cho phụ huynh trong trang phụ huynh; lỗi ở đây không chặn việc kết thúc buổi
+        try { parent_notify_session($sid); } catch (Throwable $e) { error_log('parent_notify_session: ' . $e->getMessage()); }
         break;
     default:
         reply(false, t('Lệnh không hợp lệ.'));

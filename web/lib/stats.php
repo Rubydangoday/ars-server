@@ -5,7 +5,8 @@ declare(strict_types=1);
 function session_stats(array $ses): array {
     $sid = (int)$ses['id'];
     $students = qall('SELECT seat_no, student_code, full_name FROM students WHERE class_id=? ORDER BY seat_no', [$ses['class_id']]);
-    $logged = array_column(qall('SELECT seat_no FROM session_logins WHERE session_id=?', [$sid]), 'seat_no');
+    // có mặt = điểm danh cuối (Remote / có câu trả lời / giáo viên sửa tay), lib/attendance.php
+    $logged = array_column(qall('SELECT seat_no FROM attendance_final WHERE session_id=? AND status="present"', [$sid]), 'seat_no');
     $sqs = qall('SELECT sq.*, q.position, q.content, q.topic, q.explanation, q.n_options, q.correct, '
               . 'q.opt_a,q.opt_b,q.opt_c,q.opt_d,q.opt_e,q.opt_f,q.opt_g,q.opt_h,q.opt_i,q.opt_j '
               . 'FROM session_questions sq JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=? ORDER BY q.position', [$sid]);

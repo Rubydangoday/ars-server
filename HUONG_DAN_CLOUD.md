@@ -10,7 +10,7 @@ Remote ─▶ gateway ─▶ laptop ARS ──"Sync to Cloud"──▶  ARS Clou
 
 | Làm ở đâu | Việc |
 |---|---|
-| **Laptop lớp học** | Lớp, danh sách học sinh (laptop là bản gốc), dạy bằng Remote, bài kiểm tra trên lớp → bấm **Sync to Cloud** khi có mạng |
+| **Laptop lớp học** | Lớp, danh sách học sinh (laptop là bản gốc), dạy bằng Remote, bài kiểm tra trên lớp → **tự đồng bộ** lên Cloud mỗi 3 phút khi có mạng |
 | **Cloud** | Bài giảng (tải file), **bài tập về nhà**, chấm bài, mã mời phụ huynh, ôn tập, xem kết quả đã công bố |
 
 Đồng bộ một chiều laptop → Cloud, gửi lại không bị trùng; mỗi lần chỉ vài chục KB nên tốn rất ít 4G.
@@ -76,13 +76,17 @@ Kiểm tra từ điện thoại **chỉ bật 4G**: mở link `/hs` → thấy t
 1. Mở **Cloud** `…/gv` → tạo tài khoản giáo viên (tài khoản đầu tiên là quản trị).
 2. Cloud → menu **☁️ Cloud** → *Nhận dữ liệu từ server lớp học* → **Tạo mã đồng bộ** → chép mã (bắt đầu `ars_`, chỉ hiện một lần).
 3. Trên **laptop** → menu **☁️ Cloud** → *Địa chỉ Cloud*: `https://ars-cloud.<tên-tailnet>.ts.net/ars` · dán mã → **Lưu & kiểm tra kết nối**.
-4. Bấm **⬆ Sync to Cloud** → lớp và học sinh lên Cloud. Sau mỗi buổi học (khi có mạng) bấm lại để đẩy kết quả.
+4. Bấm **⬆ Sync to Cloud** → lớp và học sinh lên Cloud.
+5. Từ đây trở đi laptop **tự đồng bộ**. Dịch vụ `ars-autosync.timer` chạy 2 phút sau khi máy bật, sau đó cứ mỗi 3 phút một lần. Mỗi lần chạy, nó gửi lên Cloud các buổi vừa kết thúc, điểm vừa công bố và điểm danh vừa sửa. Giáo viên quên bấm nút cũng không sao.
+   - Khi mất mạng, laptop tự thử lại với khoảng cách tăng dần, tối đa 30 phút một lần. Dữ liệu vẫn nằm an toàn trên laptop.
+   - Trang **☁️ Cloud** hiện **🔄 Tự động: BẬT**. Giáo viên có thể tắt chế độ này cho riêng tài khoản của mình.
+   - Muốn gửi ngay: chạy `ars sync`. Xem nhật ký: `ars sync log`.
 
 ## 5. Dùng hằng ngày
 
 - **Đăng bài giảng / giao bài tập về nhà: làm trên Cloud** (`…/gv` của Cloud). Học sinh thấy ngay, 24/24.
   Nên xuất PowerPoint sang **PDF** trước khi tải lên cho nhẹ.
-- **Dạy bằng Remote: làm trên laptop** như cũ (không cần mạng). Xong buổi → **Sync to Cloud** khi có Wi-Fi/4G.
+- **Dạy bằng Remote: làm trên laptop** như cũ (không cần mạng). Xong buổi, kết quả **tự lên Cloud** trong vòng 3 phút khi laptop có Wi-Fi/4G (muốn gửi ngay thì bấm **Sync to Cloud**).
 - Đổi danh sách lớp: sửa trên **laptop** rồi Sync (laptop là bản gốc của lớp/học sinh).
 - Gửi học sinh / phụ huynh **link Cloud** (`…/hs`, mã mời phụ huynh tạo trên Cloud), không gửi link laptop.
 

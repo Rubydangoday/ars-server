@@ -1,7 +1,9 @@
 <?php
 // Phụ huynh & nhận xét: mời phụ huynh bằng mã ngắn + QR (từng em hoặc in phiếu cả lớp), quản lý liên kết, gửi nhận xét.
+// Tài khoản phụ huynh theo SĐT (lib/parent_accounts.php): cấp cả lớp + tải file SĐT / học sinh / mật khẩu lần đầu, cấp lại từng em.
 require __DIR__ . '/lib/lms.php';
 require __DIR__ . '/lib/school.php';
+require __DIR__ . '/lib/parent_accounts.php';
 $t = require_login();
 $classes = family_classes();
 $id = (int)($_GET['class'] ?? $_POST['class_id'] ?? ($classes[0]['id'] ?? 0));
@@ -26,12 +28,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') try {
         $_SESSION['parent_invite_sheet'] = ['class' => $c['name'], 'items' => $out];
         redirect($back . '&sheet=1');
     }
+    if ($act === 'accounts') {                       // cấp tài khoản theo SĐT phụ huynh + tải file phát cho phụ huynh
+        $rows = parent_accounts_provision($id, !empty($_POST['reissue']));
+        if (!$rows) throw new RuntimeException('Lớp chưa có học sinh.');
+        parent_accounts_send($c, $rows, ($_POST['format'] ?? '') === 'csv' ? 'csv' : 'xlsx');
+    }
     $code = trim($_POST['student_code'] ?? '');
     $st = $code !== '' ? q1('SELECT * FROM students WHERE class_id=? AND student_code=?', [$id, $code]) : null;
     if (!$st) throw new RuntimeException('Học sinh phải có mã và thuộc lớp.');
     if ($act === 'invite') {
         $_SESSION['parent_invite_once'] = ['code' => parent_invite_new($id, $code), 'student' => $st['full_name'], 'sc' => $code];
         redirect($back . '#invite');
+    } elseif ($act === 'account_reset') {            // phụ huynh quên / mất phiếu: mật khẩu mới, hiện một lần
+        $r = parent_accounts_provision($id, false, $code)[0];
+        if ($r['password'] === '') throw new RuntimeException($r['status']);
+        $_SESSION['parent_pw_once'] = $r;
+        redirect($back . '#pacc');
     } elseif ($act === 'comment') {
         q('INSERT INTO teacher_comments(class_id,student_code,teacher_id,comment) VALUES(?,?,?,?)', [$id, $code, $t['id'], required_text('comment', 10000)]);
         flash('Đã gửi nhận xét cho phụ huynh.');
@@ -75,6 +87,10 @@ if ($c) {
     foreach (qall('SELECT tc.* FROM teacher_comments tc JOIN (SELECT student_code, MAX(id) m FROM teacher_comments WHERE class_id=? GROUP BY student_code) x ON x.m=tc.id', [$id]) as $r) $last[$r['student_code']] = $r;
 }
 $with_code = array_filter($students, fn($s) => (string)$s['student_code'] !== '');
+$acc = $c ? parent_accounts_state($id) : [];
+$n_phone = count(array_filter($with_code, fn($s) => normalize_phone((string)$s['parent_phone'])));
+$n_wait = count(array_filter($acc, fn($a) => $a['parent'] && $a['parent']['must_change_pw']));
+$n_used = count(array_filter($acc, fn($a) => $a['parent'] && !$a['parent']['must_change_pw']));
 $n_linked = count(array_filter($with_code, fn($s) => !empty($links[$s['student_code']])));
 
 page_head('Phụ huynh và nhận xét', 'family.php');
@@ -120,13 +136,36 @@ page_head('Phụ huynh và nhận xét', 'family.php');
     <div class="row" style="margin:0"><input name="grade_level" type="number" min="1" max="12" value="<?= (int)$c['grade_level'] ?>" style="width:80px"><button name="action" value="grade_level">Lưu</button></div></form>
 </div>
 
+<section class="card" id="pacc">
+  <h2>📱 Tài khoản phụ huynh bằng số điện thoại</h2>
+  <p class="muted">Phụ huynh đăng nhập bằng <b>SĐT</b> (cột "SĐT phụ huynh" trong danh sách lớp) và <b>mật khẩu lần đầu</b> do hệ thống tạo. Đăng nhập lần đầu bắt buộc đổi mật khẩu. Anh chị em cùng SĐT phụ huynh dùng chung một tài khoản.</p>
+  <?php if (isset($_SESSION['parent_pw_once'])): $po = $_SESSION['parent_pw_once']; unset($_SESSION['parent_pw_once']); ?>
+    <div class="flash warn">Mật khẩu mới cho phụ huynh em <b><?= h($po['student']) ?></b> — chỉ hiện một lần:<br>
+      Tên đăng nhập: <code><?= h($po['phone']) ?></code> · Mật khẩu: <code translate="no"><?= h($po['password']) ?></code> · Trang đăng nhập: <code><?= h(share_base()) ?>/parent/</code><br>
+      <span class="small">Phụ huynh phải đổi mật khẩu khi đăng nhập. Gửi riêng cho phụ huynh (Zalo / tin nhắn), không đăng lên nhóm chung.</span></div>
+  <?php endif; ?>
+  <div class="stat-row">
+    <div class="stat"><b><?= $n_phone ?>/<?= count($with_code) ?></b><span>Học sinh có SĐT phụ huynh</span></div>
+    <div class="stat"><b><?= $n_wait ?></b><span>Đã cấp, phụ huynh chưa đăng nhập</span></div>
+    <div class="stat"><b><?= $n_used ?></b><span>Phụ huynh đã đổi mật khẩu</span></div>
+  </div>
+  <?php if (!$n_phone): ?><p class="muted">Chưa có SĐT phụ huynh: thêm cột <b>SĐT phụ huynh</b> vào file danh sách rồi nhập lại, hoặc bấm <b>Sửa</b> từng học sinh ở <a href="class.php?id=<?= $id ?>">trang lớp</a>.</p>
+  <?php else: ?>
+  <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="class_id" value="<?= $id ?>"><input type="hidden" name="action" value="accounts">
+    <button class="primary">⬇ Cấp tài khoản &amp; tải file mật khẩu</button>
+    <select name="format"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option></select>
+    <label class="check"><input type="checkbox" name="reissue" value="1"> Cấp lại mật khẩu cho phụ huynh chưa đăng nhập (phiếu cũ hết hiệu lực)</label></form>
+  <p class="muted small">File gồm: STT, họ tên học sinh, MSSV, lớp, SĐT phụ huynh (tên đăng nhập), mật khẩu lần đầu, trang đăng nhập. Mật khẩu chỉ có trong file này (máy chủ chỉ lưu dạng mã hoá): cấp lần đầu thì tải file rồi in / gửi riêng cho từng phụ huynh. Bấm lại lần sau chỉ tạo mật khẩu cho học sinh mới; phụ huynh đã đổi mật khẩu không bị ảnh hưởng.</p>
+  <?php endif; ?>
+</section>
+
 <section class="card flush">
   <div class="card-head"><h2>Học sinh trong lớp</h2><input type="search" class="tbl-filter" placeholder="🔎 Tìm học sinh…" data-filter="#fam-table"></div>
   <?php if (!$students): ?>
     <div class="empty-state"><b>Lớp chưa có học sinh</b><p class="muted">Thêm danh sách ở trang lớp.</p><a class="btn" href="class.php?id=<?= $id ?>">Mở trang lớp</a></div>
   <?php else: ?>
   <table class="data fam" id="fam-table">
-    <thead><tr><th>#</th><th>Học sinh</th><th>Phụ huynh</th><th>Nhận xét gần nhất</th><th></th></tr></thead>
+    <thead><tr><th>#</th><th>Học sinh</th><th>Phụ huynh</th><th>Tài khoản SĐT</th><th>Nhận xét gần nhất</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($students as $s): $sc = (string)$s['student_code']; $ls = $links[$sc] ?? []; $pd = $pending[$sc] ?? null; $lc = $last[$sc] ?? null; ?>
       <tr>
@@ -141,6 +180,16 @@ page_head('Phụ huynh và nhận xét', 'family.php');
           <?php if ($pd): ?><span class="tag warn" title="Hết hạn <?= h($pd['exp']) ?>">⏳ <?= (int)$pd['n'] ?> mã đang chờ</span><?php endif; ?>
           <?php if (!$ls && !$pd): ?><span class="tag">Chưa liên kết</span><?php endif; ?>
         </td>
+        <td class="small"><?php $a = $acc[$sc] ?? null; $ph = (string)($s['parent_phone'] ?? ''); ?>
+          <?php if ($ph === ''): ?><span class="muted">chưa có SĐT</span>
+          <?php else: ?><span translate="no"><?= h($ph) ?></span><br>
+            <?php if (!$a || !$a['parent']): ?><span class="tag">chưa cấp</span>
+            <?php elseif ($a['parent']['must_change_pw']): ?><span class="tag warn" title="Cấp lúc <?= h((string)$a['parent']['pw_issued_at']) ?>">chờ đăng nhập lần đầu</span>
+            <?php else: ?><span class="tag ok">đang dùng</span><?php endif; ?>
+            <?php if ($a && $a['parent'] && $sc !== ''): ?>
+            <form method="post" class="inline" onsubmit="return confirm(<?= h(json_encode('Tạo mật khẩu mới cho phụ huynh em ' . $s['full_name'] . '? Mật khẩu cũ hết hiệu lực.', JSON_UNESCAPED_UNICODE)) ?>)"><?= csrf_field() ?><input type="hidden" name="class_id" value="<?= $id ?>"><input type="hidden" name="student_code" value="<?= h($sc) ?>"><button class="link" name="action" value="account_reset">cấp lại MK</button></form>
+            <?php endif; ?>
+          <?php endif; ?></td>
         <td class="small"><?= $lc ? '<span class="clamp">' . h($lc['comment']) . '</span><small class="muted">' . h(substr($lc['created_at'], 0, 16)) . '</small>' : '<span class="muted">—</span>' ?></td>
         <td class="actions">
           <?php if ($sc !== ''): ?>

@@ -87,6 +87,9 @@ mysql ars < "$DST/db/migrate_010_tutor_chats.sql"
 mysql ars < "$DST/db/migrate_011_set_finalize.sql"
 mysql ars < "$DST/db/migrate_012_nrf_only.sql"
 mysql ars < "$DST/db/migrate_013_no_facebook.sql"
+mysql ars < "$DST/db/migrate_014_attendance_parent_msgs.sql"
+mysql ars < "$DST/db/migrate_015_cloud_autosync.sql"
+mysql ars < "$DST/db/migrate_016_parent_phone_login.sql"
 
 # thư mục lưu file bài giảng (ngoài /opt để cập nhật mã không xoá mất)
 UPL=/var/lib/ars/uploads
@@ -155,6 +158,12 @@ if [ $CLOUD = 0 ] && [ -d /etc/udev/rules.d ]; then   # ModemManager không chi�
     udevadm control --reload-rules 2>/dev/null && udevadm trigger --subsystem-match=tty 2>/dev/null || true
 fi
 chmod 755 "$DST/deploy/ars-mdns.sh"
+if [ $HAS_SYSTEMD = 1 ] && [ $CLOUD = 0 ]; then   # tự đồng bộ Cloud mỗi 3 phút khi máy bật (chỉ gửi khi giáo viên đã nhập Cloud)
+    cp "$DST/deploy/ars-autosync.service" "$DST/deploy/ars-autosync.timer" /etc/systemd/system/
+    systemctl daemon-reload; systemctl enable -q --now ars-autosync.timer
+elif [ $CLOUD = 0 ] && [ -d /etc/cron.d ]; then
+    echo "*/3 * * * * $SVC_USER ARS_CONFIG=$DST/config.ini php $DST/deploy/ars-autosync.php >/dev/null 2>&1" > /etc/cron.d/ars-autosync
+fi
 if [ $HAS_SYSTEMD = 1 ] && [ $CLOUD = 0 ]; then
     systemctl enable -q --now avahi-daemon 2>/dev/null || true
     cp "$DST/deploy/ars-mdns.service" /etc/systemd/system/

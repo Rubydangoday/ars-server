@@ -5,7 +5,7 @@ $t = require_login();
 $cls = (int)($_GET['class'] ?? 0);
 $rows = qall('SELECT s.*, c.name AS class_name, c.room_id, qs.title, l.no AS lesson_no, l.id AS lesson_id2, '
            . '(SELECT COUNT(*) FROM students st WHERE st.class_id=s.class_id) AS n_students, '
-           . '(SELECT COUNT(*) FROM session_logins l WHERE l.session_id=s.id) AS n_logged, '
+           . '(SELECT COUNT(*) FROM attendance_final af WHERE af.session_id=s.id AND af.status="present") AS n_logged, '
            . '(SELECT COUNT(*) FROM session_questions sq WHERE sq.session_id=s.id) AS n_q, '
            . '(SELECT COUNT(*) FROM session_questions sq JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND q.correct IS NOT NULL AND q.correct<>"") AS n_scored, '
            . '(SELECT COUNT(*) FROM final_answers f JOIN session_questions sq ON sq.id=f.session_q_id JOIN questions q ON q.id=sq.question_id WHERE sq.session_id=s.id AND f.answer=q.correct) AS n_ok '

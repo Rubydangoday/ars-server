@@ -25,6 +25,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $j = sync_http($url, $row['cloud_token'], ['ping' => true]);
                 flash('Kết nối Cloud thành công — tài khoản trên Cloud: ' . ($j['teacher'] ?? '?') . '.');
             }
+        } elseif ($act === 'auto') {
+            q('UPDATE teachers SET cloud_auto=? WHERE id=?', [(int)!empty($_POST['on']), $tid]);
+            flash(!empty($_POST['on']) ? 'Đã bật tự đồng bộ: máy chủ tự gửi buổi mới lên Cloud mỗi 3 phút khi có Internet.' : 'Đã tắt tự đồng bộ. Nhớ bấm Sync to Cloud sau mỗi buổi.');
         } elseif ($act === 'push') {
             flash(sync_push($tid, !empty($_POST['all'])));
         } elseif ($act === 'new_token') {
@@ -37,7 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('sync.php');
 }
 
-$me = q1('SELECT cloud_url, cloud_token FROM teachers WHERE id=?', [$tid]);
+$me = q1('SELECT cloud_url, cloud_token, cloud_auto FROM teachers WHERE id=?', [$tid]);
+$auto_fail = json_decode(setting('sync_auto_fail_' . $tid) ?? '', true);
 $pending = (int)qv('SELECT COUNT(*) FROM sessions s JOIN classes c ON c.id=s.class_id WHERE c.teacher_id=? AND s.status="ended" AND s.cloud_synced_at IS NULL', [$tid]);
 $last_ok = qv('SELECT MAX(created_at) FROM sync_log WHERE teacher_id=? AND direction="push" AND ok=1', [$tid]);
 $tokens = qall('SELECT * FROM sync_tokens WHERE teacher_id=? ORDER BY id DESC', [$tid]);
@@ -46,7 +50,7 @@ $log = qall('SELECT * FROM sync_log WHERE teacher_id=? ORDER BY id DESC LIMIT 15
 page_head('Đồng bộ Cloud', 'sync.php');
 ?>
 <div class="page-head"><div><h1>☁️ Đồng bộ Cloud</h1>
-  <p class="muted">Trên lớp, server này chạy offline để nhận Remote. Khi có Internet (hoặc cuối ngày), bấm <b>Sync to Cloud</b> để đẩy lớp, học sinh và điểm bấm Remote lên server Cloud — phụ huynh và học sinh ở nhà mở web Cloud là xem được ngay.</p></div>
+  <p class="muted">Trên lớp, server này chạy offline để nhận Remote. Khi có Internet, máy chủ <b>tự động</b> đẩy lớp, học sinh và điểm bấm Remote lên server Cloud (hoặc bấm <b>Sync to Cloud</b> để gửi ngay) — phụ huynh và học sinh ở nhà mở web Cloud là xem được ngay.</p></div>
   <div><a class="btn" href="notify.php">Thông báo Zalo / SMS →</a></div></div>
 
 <section class="card">
@@ -56,12 +60,18 @@ page_head('Đồng bộ Cloud', 'sync.php');
     <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="action" value="push">
       <button class="primary" style="font-size:17px;padding:10px 22px">⬆ Sync to Cloud</button>
       <label class="check"><input type="checkbox" name="all" value="1"> Gửi lại toàn bộ buổi (sau khi khôi phục Cloud)</label></form>
+    <form method="post" class="row"><?= csrf_field() ?><input type="hidden" name="action" value="auto"><input type="hidden" name="on" value="<?= $me['cloud_auto'] ? 0 : 1 ?>">
+      <?php if ($me['cloud_auto']): ?><span class="tag live">🔄 Tự động: BẬT</span>
+        <span class="muted small">Khi máy chủ bật và có Internet, buổi mới (kết thúc buổi, công bố điểm, sửa điểm danh) được gửi lên Cloud trong vòng 3 phút — không cần bấm nút.<?php if ($auto_fail): ?> <b>Lần thử gần nhất lỗi (chưa có Internet?) — máy chủ sẽ tự thử lại.</b><?php endif; ?></span>
+        <button class="small">Tắt</button>
+      <?php else: ?><span class="tag off">Tự động: TẮT</span><span class="muted small">Phải bấm Sync to Cloud sau mỗi buổi.</span><button class="small primary">Bật tự đồng bộ</button><?php endif; ?></form>
     <p class="muted small">Gửi: lớp, danh sách học sinh, bộ câu hỏi đã dùng, điểm danh và đáp án cuối của từng học sinh (buổi đã kết thúc). Không gửi bài giảng, ghi âm hay mật khẩu. Gửi lại nhiều lần không nhân đôi dữ liệu.</p>
   <?php endif; ?>
   <form method="post" class="stack"><?= csrf_field() ?><input type="hidden" name="action" value="config">
     <label>Địa chỉ Cloud <input name="cloud_url" value="<?= h($me['cloud_url'] ?? '') ?>" placeholder="https://ars.truong.edu.vn"></label>
     <label>Mã đồng bộ (tạo ở trang này trên Cloud) <input name="cloud_token" autocomplete="off" value="<?= $me['cloud_token'] ? str_repeat('•', 8) . h(substr($me['cloud_token'], -4)) : '' ?>" placeholder="ars_…"></label>
     <button>Lưu &amp; kiểm tra kết nối</button>
+    <?php if (!$me['cloud_url']): ?><span class="muted small">Chỉ cần nhập một lần: sau đó máy chủ <b>tự đồng bộ</b> mỗi khi bật và có Internet.</span><?php endif; ?>
     <span class="muted small">Để trống địa chỉ để tắt đồng bộ. Nên dùng https:// khi Cloud ở trên Internet.</span></form>
 </section>
 

@@ -54,8 +54,13 @@ Nút **▶ Bắt đầu** màu cam luôn ở góc phải để mở nhanh buổi
    - **Tên lớp**, **môn học**, **lớp hành chính** (để giáo viên chủ nhiệm xem được báo cáo).
    - **Mã lớp (room, 1–255)**: con số mà Remote của học sinh phải nhớ. Mỗi phòng học dùng một room. Room này phải trùng với `[gateway] room` trong `config.ini` của máy chủ (hỏi người cài máy chủ nếu đổi room).
 2. Vào lớp, thêm học sinh:
-   - Từng em: MSSV, họ tên, **số ghế (1–99)**. Số ghế chính là **ID học sinh gõ trên Remote**.
-   - Hoặc nhập cả danh sách từ file Excel (.xlsx) hoặc CSV (dấu `,` hoặc `;`, UTF-8): xem trước rồi mới xác nhận.
+   - Từng em: MSSV, họ tên, **số ghế (1–99)**, **SĐT phụ huynh**. Số ghế chính là **ID học sinh gõ trên Remote**. SĐT phụ huynh dùng làm tên đăng nhập của phụ huynh (xem mục 9).
+   - Hoặc bấm **Nhập danh sách (Excel, CSV, Word, TXT)** để nhập cả lớp từ file. Xem trước rồi mới bấm xác nhận:
+     - **Excel (.xlsx)** hoặc **CSV** (dấu `,` hoặc `;`, UTF-8);
+     - **Word (.docx)**: một bảng, hoặc mỗi dòng một học sinh;
+     - **.txt**: mỗi dòng một học sinh, ví dụ `1. 23134001 Nguyễn Văn An` hoặc `23134001 - Nguyễn Văn An`.
+
+     Cột được nhận theo tiêu đề, có dấu hay không dấu đều được: **STT** (số ghế), **MSSV / Mã HS**, **Họ tên**, **SĐT phụ huynh**. Nếu file tách thành hai cột **Họ đệm** và **Tên** thì hệ thống tự ghép lại. Nếu file không có cột STT, số ghế được đánh 1, 2, 3… theo thứ tự trong file; phần xem trước ghi *(tự đánh số)*. File `.doc` cũ cần mở bằng Word rồi lưu lại thành `.docx`.
 3. **Mã tham gia lớp** (ví dụ `FDDC78`) hiện trong trang lớp, kèm link `http://…/hs/FDDC78` và nút **QR** để chiếu cho cả lớp quét. Học sinh chưa có trong danh sách dùng mã này để tự đăng ký vào lớp và được cấp số ghế trống tiếp theo.
    - **Khoá đăng ký**: ngừng nhận học sinh mới.
    - **Đổi mã**: tạo mã mới khi mã cũ bị lộ.
@@ -99,7 +104,16 @@ Kho đề dùng chung giữa các giáo viên. Từ một bộ câu hỏi có th
 3. Trên bảng điều khiển, dòng trạng thái phải là **Gateway: đang nhận**. Nếu hiện *chưa kết nối*: kiểm tra gateway đã cắm USB, hoặc nhờ người quản lý máy chủ chạy `ars status`. Gateway cắm vào máy của bạn (không phải máy chủ): bấm **🔌 Gateway USB máy này** (Chrome/Edge).
 
 ### 4.2 Điểm danh
-Học sinh bật Remote, nhập **số ghế** rồi bấm **OK**. Ô ghế tương ứng trên bảng điều khiển chuyển màu khi đã điểm danh; Remote của em sáng đèn xanh.
+Học sinh bật Remote, nhập **số ghế** rồi bấm **OK**. Khi đã điểm danh, ô ghế của em trên bảng điều khiển chuyển màu và Remote sáng đèn xanh.
+
+Hệ thống **tự điểm danh**: em nào đăng nhập bằng Remote, hoặc có câu trả lời được nhận trong buổi, được tính là **có mặt**. Em không có cả hai được tính là **vắng**. Ví dụ, em làm xong bài kiểm tra bằng Remote thì đã được tick có mặt.
+
+- **Sửa điểm danh**: bấm nút **📋 Điểm danh** ở trang kết quả buổi, hoặc ở mục *Các buổi đã dạy* trong trang lớp. Với mỗi em, chọn *Tự động*, *Có mặt*, *Vắng* hoặc *Vắng có phép*, có thể ghi chú (ví dụ: Remote hỏng, làm bài giấy), rồi bấm **Lưu điểm danh**.
+- **Điểm danh cả lớp**: trong trang lớp, bấm **🗓 Điểm danh**. Trang này có bảng mọi buổi × học sinh (✓ có mặt · ✗ vắng · P vắng có phép), kèm tỉ lệ có mặt của từng em, và có nút **Xuất Excel** / **CSV**.
+- **Báo cho phụ huynh**: khi bạn bấm **Kết thúc buổi**, mỗi phụ huynh đã liên kết sẽ nhận một tin trong mục **🔔 Thông báo** ở trang phụ huynh. Tin cho biết con có mặt hay vắng, và có điểm nếu kết quả đã công bố.
+  - Với bài kiểm tra chưa công bố, tin ghi *"Điểm sẽ được báo khi thầy cô công bố"*. Khi bạn bấm công bố, chính tin đó được thêm điểm.
+  - Khi bạn sửa điểm danh, tin cũng được cập nhật.
+  - Trong cả hai trường hợp, tin hiện lại là **chưa đọc** để phụ huynh thấy thay đổi.
 
 ### 4.3 Hỏi từng câu
 
@@ -183,7 +197,26 @@ Gợi ý: nút **Giao bài ôn tập** trong trang lớp giao nhanh một bộ c
 - **Gửi nhận xét** cho từng em; phụ huynh đọc ở trang của mình.
 - Nếu quản trị viên đã cấu hình Zalo OA / SMS (**Thêm → Cloud → Thông báo**), kết quả buổi học có thể gửi tự động cho phụ huynh.
 
-Phụ huynh quên mật khẩu: cấp **mã mời mới** cho em đó.
+### 9.1 Tài khoản phụ huynh bằng số điện thoại
+
+Cách này giống cổng phụ huynh mà nhiều trường đang dùng: giáo viên cấp tài khoản, phụ huynh đăng nhập bằng số điện thoại.
+
+1. **Nhập SĐT phụ huynh** vào danh sách lớp, theo một trong hai cách:
+   - thêm cột **SĐT phụ huynh** vào file danh sách rồi nhập lại (file mẫu đã có sẵn cột này; nhập lại file không có cột SĐT thì SĐT cũ vẫn được giữ);
+   - hoặc bấm **Sửa** từng em trong trang lớp.
+2. Vào **Thêm → Phụ huynh** (hoặc nút **📱 Tài khoản phụ huynh** trong trang lớp), mục **Tài khoản phụ huynh bằng số điện thoại**. Chọn **Excel** hoặc **CSV** rồi bấm **⬇ Cấp tài khoản & tải file mật khẩu**.
+3. File tải về có các cột: STT, họ tên học sinh, MSSV, lớp, **SĐT phụ huynh (tên đăng nhập)**, **mật khẩu lần đầu** (8 ký tự, tự tạo), trang đăng nhập và ghi chú. Hãy in phiếu hoặc gửi riêng cho từng phụ huynh, không đăng lên nhóm chung.
+4. Phụ huynh đăng nhập bằng SĐT và mật khẩu đó. Hệ thống **bắt buộc đổi mật khẩu** ngay lần đầu; chưa đổi thì chưa xem được gì.
+
+Lưu ý:
+- Mật khẩu chỉ có trong file tải về, vì máy chủ chỉ lưu dạng mã hoá. Lần sau bấm lại thì chỉ học sinh mới được cấp mật khẩu. Muốn tạo lại mật khẩu cho những phụ huynh **chưa đăng nhập** (ví dụ mất phiếu), tick **Cấp lại mật khẩu…** trước khi bấm.
+- Anh chị em có **cùng SĐT phụ huynh** dùng chung một tài khoản, kể cả khi học khác lớp.
+- **Phụ huynh quên mật khẩu**: trong bảng học sinh, cột *Tài khoản SĐT*, bấm **cấp lại MK**. Mật khẩu mới hiện một lần, và phụ huynh phải đổi lại khi đăng nhập.
+- **Đổi SĐT** của một em thì tài khoản theo SĐT cũ bị bỏ liên kết ở lần cấp tiếp theo.
+- Tài khoản dùng chung với lớp của giáo viên khác thì chỉ được liên kết thêm con; muốn cấp lại mật khẩu, nhờ giáo viên lớp đó.
+- Nên tải file **Excel**: mở file CSV bằng Excel có thể làm mất số 0 đầu SĐT.
+
+Phụ huynh tự đăng ký bằng mã mời mà quên mật khẩu: cấp **mã mời mới** cho em đó.
 
 ---
 
@@ -217,7 +250,7 @@ Phụ huynh quên mật khẩu: cấp **mã mời mới** cho em đó.
 Chỉ tài khoản **quản trị** thấy:
 - **Giáo viên**: tạo mã mời giáo viên, chế độ đăng ký, khoá/mở tài khoản, cấp quyền, đặt lại mật khẩu.
 - **Trường**: tạo trường/trung tâm, gán giáo viên, cấp quyền **Admin trường** (ban giám hiệu xem báo cáo các lớp).
-- **Cloud**: đồng bộ "Hybrid". Máy chủ ở lớp chạy offline; khi có mạng, nhập địa chỉ Cloud + mã đồng bộ rồi bấm **Sync to Cloud** để đẩy kết quả lên máy chủ Cloud.
+- **Cloud**: đồng bộ "Hybrid". Máy chủ ở lớp chạy offline; khi có mạng, nhập địa chỉ Cloud + mã đồng bộ rồi bấm **Lưu & kiểm tra kết nối**. Chỉ cần làm một lần. Từ đó, máy chủ ở lớp **tự đồng bộ**: cứ mỗi 3 phút khi máy bật và có mạng, nó tự đẩy buổi mới, điểm và điểm danh lên Cloud. Muốn gửi ngay thì bấm **Sync to Cloud**. Trang Cloud có nút tắt chế độ tự động nếu không muốn dùng.
 - **Đăng nhập Google** và **Zalo/SMS** cấu hình trong Cài đặt.
 
 ---

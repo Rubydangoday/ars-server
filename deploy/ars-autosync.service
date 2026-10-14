@@ -1,0 +1,12 @@
+[Unit]
+Description=ARS - tu dong dong bo len Cloud (buoi moi, diem danh, diem)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ars
+Group=ars
+Environment=ARS_CONFIG=/opt/ars-server/config.ini
+ExecStart=/usr/bin/php /opt/ars-server/deploy/ars-autosync.php
+TimeoutStartSec=600

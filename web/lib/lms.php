@@ -34,8 +34,9 @@ function lms_upload(array $f,array $allow,int $limit=20971520): array {
 const LMS_IMAGE=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp'];
 // iPhone/Safari ghi âm ra MP4; libmagic nhận diện là video/mp4 hoặc audio/x-m4a.
 const LMS_AUDIO=['audio/webm'=>'webm','video/webm'=>'webm','audio/ogg'=>'ogg','audio/mpeg'=>'mp3','audio/wav'=>'wav','audio/x-wav'=>'wav','audio/mp4'=>'m4a','audio/x-m4a'=>'m4a','video/mp4'=>'m4a','audio/aac'=>'aac'];
-function parent_me(): ?array {return $_SESSION['parent']??null;}
-function require_parent(): array {if(!parent_me())redirect('index.php');return parent_me();}
+// must_change: đăng nhập bằng mật khẩu giáo viên cấp — chưa được xem gì cho tới khi đổi mật khẩu (parent/password.php)
+function parent_me(): ?array {$p=$_SESSION['parent']??null;return $p&&empty($p['must_change'])?$p:null;}
+function require_parent(): array {if(!empty($_SESSION['parent']['must_change']))redirect('password.php');if(!parent_me())redirect('index.php');return parent_me();}
 function parent_child(int $class,string $code): array {
     $r=q1('SELECT s.*, c.name AS class_name FROM parent_links l JOIN students s ON s.class_id=l.class_id AND s.student_code=l.student_code JOIN classes c ON c.id=s.class_id WHERE l.parent_id=? AND l.class_id=? AND l.student_code=?',[parent_me()['id'],$class,$code]);
     if(!$r){http_response_code(404);exit('Không tìm thấy học sinh.');}return $r;
